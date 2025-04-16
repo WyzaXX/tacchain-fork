@@ -69,7 +69,6 @@ require (
 	github.com/chzyer/readline v1.5.1 // indirect
 	github.com/cockroachdb/apd/v2 v2.0.2 // indirect
 	github.com/cockroachdb/errors v1.11.3 // indirect
-	github.com/cockroachdb/fifo v0.0.0-20240606204812-0bbfbd93a7ce // indirect
 	github.com/cockroachdb/logtags v0.0.0-20230118201751-21c54148d20b // indirect
 	github.com/cockroachdb/pebble v1.1.1 // indirect
 	github.com/cockroachdb/redact v1.1.5 // indirect
@@ -263,6 +262,9 @@ replace (
 	// use cosmos fork of keyring
 	github.com/99designs/keyring => github.com/cosmos/keyring v1.2.0
 
+	// Pin this pebble version to avoid breaking compilation of geth
+	github.com/cockroachdb/pebble => github.com/cockroachdb/pebble v0.0.0-20230928194634-aa077af62593
+
 	// dgrijalva/jwt-go is deprecated and doesn't receive security updates.
 	// See: https://github.com/cosmos/cosmos-sdk/issues/13134
 	github.com/dgrijalva/jwt-go => github.com/golang-jwt/jwt/v4 v4.4.2
@@ -273,10 +275,8 @@ replace (
 	// NOTE: (11-Feb-2025): Bumping to version that replaces go-ethereum dependency to add MCOPY support
 	// See: https://github.com/b-harvest/ethermint/compare/v0.22.0-sdk50-1...Asphere-xyz:ethermint:v0.22.0-sdk50-1-asphere
 	// NOTE: (28-Feb-2025): Bumping to version that bumps GETH from v1.10.26 to v1.13.15
-	github.com/evmos/ethermint => github.com/asphere-xyz/ethermint v0.22.0-sdk50-1.0.20250227143936-b62f0ef28ed6
-
-	// Pin this pebble version to avoid breaking compilation of geth
-	github.com/cockroachdb/pebble => github.com/cockroachdb/pebble v0.0.0-20230928194634-aa077af62593
+	// NOTE: (03-Apr-2025): Bumping to version that fixes effectiveGasPrice errors when deploying some contracts
+	github.com/evmos/ethermint => github.com/asphere-xyz/ethermint v0.22.0-sdk50-1.0.20250403101148-e8e814183c46
 
 	// Fix upstream GHSA-h395-qcrw-5vmq vulnerability.
 	// See: https://github.com/cosmos/cosmos-sdk/issues/10409
