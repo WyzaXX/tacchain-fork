@@ -2,10 +2,13 @@ package e2e
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -33,7 +36,7 @@ func (s *TacchainTestSuite) SetupSuite() {
 func (s *TacchainTestSuite) initChain() error {
 	s.T().Log("Initializing chain...")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
 	params := s.DefaultCommandParams()
@@ -65,6 +68,10 @@ func (s *TacchainTestSuite) initChain() error {
 		return fmt.Errorf("failed to collect gentxs: %v", err)
 	}
 
+	if err := ModifyInitialChainConfig(s.homeDir); err != nil {
+		return fmt.Errorf("failed to modify chain config: %v", err)
+	}
+
 	return nil
 }
 
@@ -83,13 +90,76 @@ func (s *TacchainTestSuite) startChain() error {
 		return fmt.Errorf("failed to start chain: %v", err)
 	}
 
-	s.T().Log("Waiting for chain to start producing blocks...")
+	s.T().Log("Waiting 3 seconds for chain to initialize...")
+	time.Sleep(3 * time.Second)
 
-	checkIfNewBlockMinted(s, stderr)
+	s.T().Log("Waiting for chain to start producing blocks...")
+	waitForNewBlock(s, stderr)
 
 	if s.cmd.ProcessState != nil && s.cmd.ProcessState.Exited() {
 		errOutput, _ := io.ReadAll(stderr)
 		return fmt.Errorf("chain process exited unexpectedly: %s", string(errOutput))
+	}
+
+	return nil
+}
+
+func ModifyInitialChainConfig(homeDir string) error {
+	genesisPath := filepath.Join(homeDir, "config", "genesis.json")
+	genesisData, err := os.ReadFile(genesisPath)
+	if err != nil {
+		return fmt.Errorf("failed to read genesis file: %v", err)
+	}
+
+	var genesis map[string]any
+	if err := json.Unmarshal(genesisData, &genesis); err != nil {
+		return fmt.Errorf("failed to unmarshal genesis: %v", err)
+	}
+
+	if appState, ok := genesis["app_state"].(map[string]any); ok {
+		if gov, ok := appState["gov"].(map[string]any); ok {
+			// Modify voting period
+			if params, ok := gov["params"].(map[string]any); ok {
+				params["voting_period"] = "3s"
+				params["expedited_voting_period"] = "3s"
+			}
+		}
+		if feemarket, ok := appState["feemarket"].(map[string]any); ok {
+			// Modify no_base_fee
+			if params, ok := feemarket["params"].(map[string]any); ok {
+				params["no_base_fee"] = true
+			}
+		}
+
+		if mint, ok := appState["mint"].(map[string]any); ok {
+			// Modify blocks_per_year
+			if params, ok := mint["params"].(map[string]any); ok {
+				params["blocks_per_year"] = "10512000"
+			}
+		}
+	}
+
+	modifiedGenesis, err := json.MarshalIndent(genesis, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal modified genesis: %v", err)
+	}
+
+	if err := os.WriteFile(genesisPath, modifiedGenesis, 0644); err != nil {
+		return fmt.Errorf("failed to write modified genesis: %v", err)
+	}
+
+	configPath := filepath.Join(homeDir, "config", "config.toml")
+	configData, err := os.ReadFile(configPath)
+	if err != nil {
+		return fmt.Errorf("failed to read config file: %v", err)
+	}
+
+	// Modify block time
+	configStr := string(configData)
+	configStr = strings.Replace(configStr, `timeout_commit = "5s"`, `timeout_commit = "3s"`, 1)
+
+	if err := os.WriteFile(configPath, []byte(configStr), 0644); err != nil {
+		return fmt.Errorf("failed to write modified config: %v", err)
 	}
 
 	return nil
