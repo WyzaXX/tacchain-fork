@@ -32,6 +32,65 @@
   - RAM: 16GB (rpc) / 32GB (validator)
   - SSD: 500GB NVMe
 
+### Join Tac Turin Testnet Using Official Snapshots
+
+This example guide connects to testnet. You can replace `chain-id`, `persistent_peers`, `timeout_commit`, `genesis url` with the network you want to join. `--home` flag specifies the path to be used. The example will create [.testnet](.testnet) folder.
+
+### Prerequisites
+
+  - [Go >= v1.21](https://go.dev/doc/install)
+  - jq
+  - curl
+  - tar
+  - lz4
+  - wget
+
+### 1. Install latest `tacchaind` [v0.0.7-testnet](https://github.com/TacBuild/tacchain/tree/v0.0.7-testnet)
+
+``` shell
+git checkout v0.0.7-testnet
+make install
+```
+
+### 2. Initialize network folder
+
+In this example our node moniker will be `testnode`, don't forget to name your own node differently.
+
+``` sh
+tacchaind init testnode --chain-id tacchain_2390-1 --home .testnet
+```
+
+### 3. Modify your [config.toml](.testnet/config/config.toml)
+
+``` toml
+..
+timeout_commit = "3s"
+..
+persistent_peers = "f8124878e3526a9814c0a5f865820c5ea7eb26f8@72.251.230.233:45130,4a03d6622a2ad923d79e81951fe651a17faf0be8@107.6.94.246:45130,ea5719fe6587b18ed0fee81f960e23c65c0e0ccc@206.217.210.164:45130"
+..
+```
+
+### 4. Fetch genesis
+
+``` sh
+curl https://raw.githubusercontent.com/TacBuild/tacchain/refs/heads/main/networks/tacchain_2390-1/genesis.json > .testnet/config/genesis.json
+```
+
+### 5. Fetch snapshot
+
+``` sh
+cd .testnet
+rm -rf data
+wget http://snapshot.tac-turin.ankr.com/tac-turin-full-latest.tar.lz4
+lz4 -dc < tac-turin-full-latest.tar.lz4 | tar -xvf -
+```
+
+### 6. Start node
+
+``` shell
+tacchaind start --chain-id tacchain_2390-1 --home .testnet
+```
+
 ### Join Tac Turin Testnet Using Docker
 
 #### Prerequisites
