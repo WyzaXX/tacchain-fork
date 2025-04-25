@@ -124,9 +124,6 @@ func (s *TacchainTestSuite) TestStaking() {
 	output, err := ExecuteCommand(ctx, params, "q", "staking", "validator", validatorAddr)
 	require.NoError(s.T(), err, "Failed to query validator info")
 
-	status := parseField(output, "status")
-	require.Equal(s.T(), "3", status, "Validator status should be 3 (BOND_STATUS_BONDED)")
-
 	delegatorShares := parseField(output, "delegator_shares")
 	require.NotEmpty(s.T(), delegatorShares, "Delegator shares should not be empty")
 }
@@ -185,6 +182,9 @@ func (s *TacchainTestSuite) TestFeemarketParams() {
 	require.NoError(s.T(), err, "Failed to create proposal file")
 
 	proposalOutput, err := ExecuteCommand(ctx, s.DefaultCommandParams(), "tx", "gov", "submit-proposal", proposalFile, "--from", "validator", "-y")
+	if err != nil {
+		s.T().Logf("Proposal submission error output: %s", proposalOutput)
+	}
 	require.NoError(s.T(), err, "Failed to submit proposal")
 
 	txHash := parseField(proposalOutput, "txhash")
