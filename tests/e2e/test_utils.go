@@ -6,7 +6,6 @@ package e2e
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -58,7 +57,7 @@ func (s *TacchainTestSuite) DefaultCommandParams() CommandParams {
 	}
 }
 
-func ExecuteBaseCommand(ctx context.Context, params CommandParams, args []string, isJSON bool) (string, error) {
+func ExecuteCommand(ctx context.Context, params CommandParams, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "tacchaind", args...)
 	cmd.Args = append(cmd.Args, "--home", params.HomeDir)
 
@@ -68,10 +67,6 @@ func ExecuteBaseCommand(ctx context.Context, params CommandParams, args []string
 
 	if params.KeyringBackend != "" {
 		cmd.Args = append(cmd.Args, "--keyring-backend", params.KeyringBackend)
-	}
-
-	if isJSON {
-		cmd.Args = append(cmd.Args, "--output", "json")
 	}
 
 	output, err := cmd.CombinedOutput()
@@ -84,17 +79,9 @@ func ExecuteBaseCommand(ctx context.Context, params CommandParams, args []string
 	return strOutput, err
 }
 
-func ExecuteCommand(ctx context.Context, params CommandParams, args ...string) (string, error) {
-	return ExecuteBaseCommand(ctx, params, args, true)
-}
-
-func ExecuteAddressCommand(ctx context.Context, params CommandParams, args ...string) (string, error) {
-	return ExecuteBaseCommand(ctx, params, args, false)
-}
-
 func GetAddress(ctx context.Context, s *TacchainTestSuite, keyName string) (string, error) {
 	params := s.DefaultCommandParams()
-	output, err := ExecuteAddressCommand(ctx, params, "keys", "show", keyName, "-a")
+	output, err := ExecuteCommand(ctx, params, "keys", "show", keyName, "-a")
 	if err != nil {
 		return "", fmt.Errorf("failed to get %s address: %v", keyName, err)
 	}
@@ -116,132 +103,69 @@ func TxBankSend(ctx context.Context, s *TacchainTestSuite, from, to string, utac
 	return output, err
 }
 
-type BlockResponse struct {
-	Header struct {
-		Height string `json:"height"`
-	} `json:"header"`
-}
-
-type GenericResponse map[string]interface{}
-
-type BalanceResponse struct {
-	Balances []struct {
-		Amount string `json:"amount"`
-		Denom  string `json:"denom"`
-	} `json:"balances"`
-	DelegationResponse struct {
-		Balance struct {
-			Amount string `json:"amount"`
-			Denom  string `json:"denom"`
-		} `json:"balance"`
-	} `json:"delegation_response"`
-}
-
 func parseBlockHeight(output string) int64 {
-	var response BlockResponse
-	//NOTE: In some outputs we have a sentence before the JSON object starts
-	jsonStart := strings.Index(output, "{")
-	if jsonStart > 0 {
-		output = output[jsonStart:]
-	}
-
-	if err := json.Unmarshal([]byte(output), &response); err != nil {
+	lines := strings.Split(output, "\n")
+	if len(lines) < 2 {
 		return -1
 	}
 
-	height, err := strconv.ParseInt(response.Header.Height, 10, 64)
-	if err != nil {
-		return -1
+	secondLine := lines[1]
+
+	heightIdx := strings.Index(secondLine, "\"height\":\"")
+	if heightIdx >= 0 {
+		startIdx := heightIdx + 10
+		endIdx := strings.Index(secondLine[startIdx:], "\"")
+		if endIdx >= 0 {
+			heightStr := secondLine[startIdx : startIdx+endIdx]
+			height, err := strconv.ParseInt(heightStr, 10, 64)
+			if err == nil {
+				return height
+			}
+		}
 	}
-	return height
+
+	return -1
 }
 
 func parseField(output string, fieldName string) string {
-	var response map[string]interface{}
-	jsonStart := strings.Index(output, "{")
-	if jsonStart > 0 {
-		output = output[jsonStart:]
-	}
-
-	if err := json.Unmarshal([]byte(output), &response); err != nil {
-		return ""
-	}
-
-	// Try direct access first
-	if value, exists := response[fieldName]; exists {
-		return convertValueToString(value)
-	}
-
-	// Check params
-	if params, exists := response["params"]; exists {
-		if paramsMap, ok := params.(map[string]interface{}); ok {
-			if value, exists := paramsMap[fieldName]; exists {
-				return convertValueToString(value)
+	if strings.Count(output, "\n") <= 1 {
+		idx := strings.Index(output, "\""+fieldName+"\":\"")
+		if idx >= 0 {
+			startIdx := idx + len("\""+fieldName+"\":\"")
+			endIdx := strings.Index(output[startIdx:], "\"")
+			if endIdx >= 0 {
+				return output[startIdx : startIdx+endIdx]
 			}
 		}
 	}
 
-	// Check validator
-	if validator, exists := response["validator"]; exists {
-		if validatorMap, ok := validator.(map[string]interface{}); ok {
-			if value, exists := validatorMap[fieldName]; exists {
-				return convertValueToString(value)
+	lines := strings.Split(output, "\n")
+	quotedField := "\"" + fieldName + "\":"
+
+	for _, line := range lines {
+		trimLine := strings.TrimSpace(line)
+		if strings.Contains(trimLine, quotedField) {
+			parts := strings.Split(trimLine, ":")
+			if len(parts) == 2 {
+				return strings.Trim(strings.TrimSpace(parts[1]), "\",")
 			}
 		}
 	}
-
-	// NOTE: Special case for authority account
-	// Check account -> value -> address
-	if account, exists := response["account"]; exists {
-		if accountMap, ok := account.(map[string]interface{}); ok {
-			if value, exists := accountMap["value"]; exists {
-				if valueMap, ok := value.(map[string]interface{}); ok {
-					if address, exists := valueMap["address"]; exists {
-						return convertValueToString(address)
-					}
-				}
-			}
-		}
-	}
-
 	return ""
 }
 
-func convertValueToString(value interface{}) string {
-	switch v := value.(type) {
-	case string:
-		return v
-	case float64:
-		return strconv.FormatFloat(v, 'f', -1, 64)
-	case bool:
-		return strconv.FormatBool(v)
-	default:
-		return fmt.Sprintf("%v", v)
-	}
-}
-
-func parseBalanceAmount(output string) string {
-	var response BalanceResponse
-	jsonStart := strings.Index(output, "{")
-	if jsonStart > 0 {
-		output = output[jsonStart:]
+func parseBalanceAmount(balanceOutput string) string {
+	amount := parseField(balanceOutput, "amount")
+	if amount == "" {
+		return UTacAmount(0)
 	}
 
-	if err := json.Unmarshal([]byte(output), &response); err != nil {
-		return "0" + DefaultDenom
+	amountInt, err := strconv.ParseInt(amount, 10, 64)
+	if err != nil {
+		return UTacAmount(0)
 	}
 
-	// Check for delegation response first
-	if response.DelegationResponse.Balance.Amount != "" {
-		return response.DelegationResponse.Balance.Amount + response.DelegationResponse.Balance.Denom
-	}
-
-	// Fall back to regular balance response
-	if len(response.Balances) > 0 {
-		return response.Balances[0].Amount + response.Balances[0].Denom
-	}
-
-	return "0" + DefaultDenom
+	return UTacAmount(amountInt)
 }
 
 func killProcessOnPort(port int) error {
@@ -308,7 +232,7 @@ func UTacAmount(amount int64) string {
 
 func GetValidatorAddress(ctx context.Context, s *TacchainTestSuite) (string, error) {
 	params := s.DefaultCommandParams()
-	validatorAddr, err := ExecuteAddressCommand(ctx, params, "keys", "show", "validator", "--bech", "val", "-a")
+	validatorAddr, err := ExecuteCommand(ctx, params, "keys", "show", "validator", "--bech", "val", "-a")
 	if err != nil {
 		return "", fmt.Errorf("failed to query validator info: %v", err)
 	}
@@ -360,4 +284,16 @@ func CreateFeemarketProposalFile(s *TacchainTestSuite, newBaseFee string) (strin
 	}
 
 	return proposalFile, nil
+}
+
+func ParseBoolField(output string, fieldName string) (bool, bool) {
+	truePattern := "\"" + fieldName + "\":true"
+	falsePattern := "\"" + fieldName + "\":false"
+
+	isTrue := strings.Contains(output, truePattern)
+	isFalse := strings.Contains(output, falsePattern)
+
+	found := isTrue || isFalse
+
+	return isTrue, found
 }

@@ -173,7 +173,7 @@ func (s *TacchainTestSuite) TestFeemarketParams() {
 	output, err := ExecuteCommand(ctx, params, "q", "feemarket", "params")
 	require.NoError(s.T(), err, "Failed to query feemarket parameters")
 
-	noBaseFee := parseField(output, "no_base_fee")
+	noBaseFee, _ := ParseBoolField(output, "no_base_fee")
 	require.NotEmpty(s.T(), noBaseFee, "Base fee should not be empty")
 
 	newBaseFee := "777777777.000000000000000000"
@@ -211,8 +211,8 @@ func (s *TacchainTestSuite) TestFeemarketParams() {
 	output, err = ExecuteCommand(ctx, params, "q", "feemarket", "params")
 	require.NoError(s.T(), err, "Failed to query updated feemarket parameters")
 
-	expectedNoBaseFee := "false"
-	updatedNoBaseFee := parseField(output, "no_base_fee")
+	expectedNoBaseFee := false
+	updatedNoBaseFee, _ := ParseBoolField(output, "no_base_fee")
 	require.Equal(s.T(), expectedNoBaseFee, updatedNoBaseFee, "Base fee bool should be updated")
 
 	updatedBaseFee := parseField(output, "base_fee")
