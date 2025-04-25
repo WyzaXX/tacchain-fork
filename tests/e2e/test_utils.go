@@ -327,7 +327,7 @@ func CreateFeemarketProposalFile(s *TacchainTestSuite, newBaseFee string) (strin
 	proposalContent := fmt.Sprintf(`{ 
 	"messages": [
 		{
-			"@type": "/ethermint.feemarket.v1.MsgUpdateParams",
+			"@type": "cosmos.evm.feemarket.v1.MsgUpdateParams",
 			"authority": "%s",
 			"params": {
 				"no_base_fee": false,
