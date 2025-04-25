@@ -347,11 +347,15 @@ func CreateFeemarketProposalFile(s *TacchainTestSuite, newBaseFee string) (strin
 	"expedited": false
 }`, governanceAddr, newBaseFee)
 
+	fmt.Printf("Governance Address: %s\n", governanceAddr)
+	fmt.Printf("Proposal Content: %s\n", proposalContent)
+
 	proposalFile := filepath.Join(s.homeDir, "draft_proposal.json")
 	err = os.WriteFile(proposalFile, []byte(proposalContent), 0644)
 	if err != nil {
 		return "", fmt.Errorf("failed to write proposal file: %v", err)
 	}
 
+	fmt.Printf("Proposal File Path: %s\n", proposalFile)
 	return proposalFile, nil
 }
