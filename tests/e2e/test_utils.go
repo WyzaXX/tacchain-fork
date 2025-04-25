@@ -1,0 +1,299 @@
+// SPDX-License-Identifier: BUSL-1.1-or-later
+// SPDX-FileCopyrightText: 2025 Web3 Technologies Inc. <https://asphere.xyz/>
+// Copyright (c) 2025 Web3 Technologies Inc. All rights reserved.
+// Use of this software is governed by the Business Source License included in the LICENSE file <https://github.com/Asphere-xyz/tacchain/blob/main/LICENSE>.
+package e2e
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/stretchr/testify/suite"
+)
+
+const (
+	DefaultChainID        = "tacchain_2390-1"
+	DefaultDenom          = "utac"
+	DefaultKeyringBackend = "test"
+)
+
+type TacchainTestSuite struct {
+	suite.Suite
+	homeDir string
+	cmd     *exec.Cmd
+}
+
+type CommandParams struct {
+	ChainID        string
+	HomeDir        string
+	KeyringBackend string
+}
+
+func (s *TacchainTestSuite) CommandParamsHomeDir() CommandParams {
+	return CommandParams{
+		HomeDir: s.homeDir,
+	}
+}
+
+func (s *TacchainTestSuite) CommandParamsChainIDHomeDir() CommandParams {
+	return CommandParams{
+		ChainID: DefaultChainID,
+		HomeDir: s.homeDir,
+	}
+}
+
+func (s *TacchainTestSuite) DefaultCommandParams() CommandParams {
+	return CommandParams{
+		ChainID:        DefaultChainID,
+		HomeDir:        s.homeDir,
+		KeyringBackend: DefaultKeyringBackend,
+	}
+}
+
+func ExecuteCommand(ctx context.Context, params CommandParams, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, "tacchaind", args...)
+	cmd.Args = append(cmd.Args, "--home", params.HomeDir)
+
+	if params.ChainID != "" {
+		cmd.Args = append(cmd.Args, "--chain-id", params.ChainID)
+	}
+
+	if params.KeyringBackend != "" {
+		cmd.Args = append(cmd.Args, "--keyring-backend", params.KeyringBackend)
+	}
+
+	output, err := cmd.CombinedOutput()
+	strOutput := string(output)
+
+	// NOTE: This Warning gets thrown on go 1.24 and gets applied to the output
+	sonicWarning := "WARNING:(ast) sonic only supports go1.17~1.23, but your environment is not suitable\n"
+	strOutput = strings.Replace(strOutput, sonicWarning, "", 1)
+
+	return strOutput, err
+}
+
+func GetAddress(ctx context.Context, s *TacchainTestSuite, keyName string) (string, error) {
+	params := s.DefaultCommandParams()
+	output, err := ExecuteCommand(ctx, params, "keys", "show", keyName, "-a")
+	if err != nil {
+		return "", fmt.Errorf("failed to get %s address: %v", keyName, err)
+	}
+	return strings.TrimSpace(output), nil
+}
+
+func QueryBankBalances(ctx context.Context, s *TacchainTestSuite, address string) (string, error) {
+	params := s.CommandParamsHomeDir()
+	output, err := ExecuteCommand(ctx, params, "q", "bank", "balances", address)
+	if err != nil {
+		return "", fmt.Errorf("failed to query balance: %v", err)
+	}
+	return parseBalanceAmount(output), nil
+}
+
+func TxBankSend(ctx context.Context, s *TacchainTestSuite, from, to string, utacAmount string) (string, error) {
+	params := s.DefaultCommandParams()
+	output, err := ExecuteCommand(ctx, params, "tx", "bank", "send", from, to, utacAmount, "--gas", "200000", "-y")
+	return output, err
+}
+
+func parseBlockHeight(output string) int64 {
+	lines := strings.Split(output, "\n")
+	if len(lines) < 2 {
+		return -1
+	}
+
+	secondLine := lines[1]
+
+	heightIdx := strings.Index(secondLine, "\"height\":\"")
+	if heightIdx >= 0 {
+		startIdx := heightIdx + 10
+		endIdx := strings.Index(secondLine[startIdx:], "\"")
+		if endIdx >= 0 {
+			heightStr := secondLine[startIdx : startIdx+endIdx]
+			height, err := strconv.ParseInt(heightStr, 10, 64)
+			if err == nil {
+				return height
+			}
+		}
+	}
+
+	return -1
+}
+
+func parseField(output string, fieldName string) string {
+	if strings.Count(output, "\n") <= 1 {
+		idx := strings.Index(output, "\""+fieldName+"\":\"")
+		if idx >= 0 {
+			startIdx := idx + len("\""+fieldName+"\":\"")
+			endIdx := strings.Index(output[startIdx:], "\"")
+			if endIdx >= 0 {
+				return output[startIdx : startIdx+endIdx]
+			}
+		}
+	}
+
+	lines := strings.Split(output, "\n")
+	quotedField := "\"" + fieldName + "\":"
+
+	for _, line := range lines {
+		trimLine := strings.TrimSpace(line)
+		if strings.Contains(trimLine, quotedField) {
+			parts := strings.Split(trimLine, ":")
+			if len(parts) == 2 {
+				return strings.Trim(strings.TrimSpace(parts[1]), "\",")
+			}
+		}
+	}
+	return ""
+}
+
+func parseBalanceAmount(balanceOutput string) string {
+	amount := parseField(balanceOutput, "amount")
+	if amount == "" {
+		return UTacAmount(0)
+	}
+
+	amountInt, err := strconv.ParseInt(amount, 10, 64)
+	if err != nil {
+		return UTacAmount(0)
+	}
+
+	return UTacAmount(amountInt)
+}
+
+func killProcessOnPort(port int) error {
+	cmd := exec.Command("lsof", "-i", fmt.Sprintf(":%d", port), "-t")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+
+	pids := strings.Split(strings.TrimSpace(string(output)), "\n")
+	for _, pid := range pids {
+		if pid == "" {
+			continue
+		}
+		killCmd := exec.Command("kill", "-9", pid)
+		if err := killCmd.Run(); err != nil {
+			return fmt.Errorf("failed to kill process %s: %v", pid, err)
+		}
+	}
+	return nil
+}
+
+func getCurrentBlockHeight(s *TacchainTestSuite) int64 {
+	ctx := context.Background()
+	params := s.CommandParamsHomeDir()
+	output, err := ExecuteCommand(ctx, params, "q", "block")
+	if err != nil {
+		return -1
+	}
+
+	return parseBlockHeight(string(output))
+}
+
+func waitForNewBlock(s *TacchainTestSuite, stderr io.ReadCloser) {
+	maxAttempts := 30
+	attempt := 0
+
+	initialHeight := getCurrentBlockHeight(s)
+
+	for attempt < maxAttempts {
+		currentHeight := getCurrentBlockHeight(s)
+		if currentHeight > initialHeight {
+			s.T().Logf("New block minted at height %d", currentHeight)
+			return
+		}
+
+		attempt++
+		if attempt == maxAttempts {
+			if s.cmd.ProcessState != nil && s.cmd.ProcessState.Exited() {
+				errOutput, _ := io.ReadAll(stderr)
+				s.T().Fatalf("Chain process exited unexpectedly: %s", string(errOutput))
+			}
+			s.T().Fatalf("Chain failed to produce new block after %d attempts", maxAttempts)
+		}
+
+		time.Sleep(3 * time.Second)
+		s.T().Logf("Waiting for new block (attempt %d/%d)", attempt, maxAttempts)
+	}
+}
+
+func UTacAmount(amount int64) string {
+	return fmt.Sprintf("%d%s", amount, DefaultDenom)
+}
+
+func GetValidatorAddress(ctx context.Context, s *TacchainTestSuite) (string, error) {
+	params := s.DefaultCommandParams()
+	validatorAddr, err := ExecuteCommand(ctx, params, "keys", "show", "validator", "--bech", "val", "-a")
+	if err != nil {
+		return "", fmt.Errorf("failed to query validator info: %v", err)
+	}
+	return strings.TrimSpace(validatorAddr), nil
+}
+
+func CreateFeemarketProposalFile(s *TacchainTestSuite, newBaseFee string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	params := s.CommandParamsHomeDir()
+	output, err := ExecuteCommand(ctx, params, "q", "auth", "module-account", "gov")
+	if err != nil {
+		return "", fmt.Errorf("failed to get governance module address: %v", err)
+	}
+
+	governanceAddr := parseField(output, "address")
+	if governanceAddr == "" {
+		return "", fmt.Errorf("failed to extract governance module address")
+	}
+
+	proposalContent := fmt.Sprintf(`{ 
+	"messages": [
+		{
+			"@type": "/cosmos.evm.feemarket.v1.MsgUpdateParams",
+			"authority": "%s",
+			"params": {
+				"no_base_fee": false,
+				"base_fee_change_denominator": 8,
+				"elasticity_multiplier": 2,
+				"enable_height": "0",
+				"base_fee": "%s", 
+				"min_gas_price": "0.000000000000000000",
+				"min_gas_multiplier": "0.500000000000000000"
+			}
+		}
+	],
+	"metadata": "ipfs://CID",
+	"deposit": "20000000utac",
+	"title": "test",
+	"summary": "test",
+	"expedited": false
+}`, governanceAddr, newBaseFee)
+
+	proposalFile := filepath.Join(s.homeDir, "draft_proposal.json")
+	err = os.WriteFile(proposalFile, []byte(proposalContent), 0644)
+	if err != nil {
+		return "", fmt.Errorf("failed to write proposal file: %v", err)
+	}
+
+	return proposalFile, nil
+}
+
+func ParseBoolField(output string, fieldName string) (bool, bool) {
+	truePattern := "\"" + fieldName + "\":true"
+	falsePattern := "\"" + fieldName + "\":false"
+
+	isTrue := strings.Contains(output, truePattern)
+	isFalse := strings.Contains(output, falsePattern)
+
+	found := isTrue || isFalse
+
+	return isTrue, found
+}
