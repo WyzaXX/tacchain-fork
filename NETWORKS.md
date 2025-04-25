@@ -128,7 +128,7 @@ This example guide connects to testnet. You can replace `chain-id`, `persistent_
 
 ### Prerequisites
 
-  - [Go >= v1.21](https://go.dev/doc/install)
+  - [Go >= 1.23.6](https://go.dev/doc/install)
   - jq
   - curl
 

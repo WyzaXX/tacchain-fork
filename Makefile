@@ -110,6 +110,12 @@ test-cover:
 test-benchmark:
 	@go test -mod=readonly -bench=. ./...
 
+test-wasmd:
+	./contrib/test-wasmd/01-accounts.sh
+	./contrib/test-wasmd/02-contracts.sh
+	./contrib/test-wasmd/03-grpc-queries.sh
+	./contrib/test-wasmd/04-gov.sh
+
 ###############################################################################
 ###                                Networks                                 ###
 ###############################################################################
@@ -121,6 +127,9 @@ testnet: install testnet-init
 
 localnet-init:
 	./contrib/localnet/init.sh
+
+localnet-init-multi-node:
+	./contrib/localnet/init-multi-node.sh
 
 localnet-start:
 	./contrib/localnet/start.sh

@@ -5,27 +5,17 @@
 package app
 
 import (
+	"fmt"
 	"math/big"
 	"os"
 
-	simappparams "cosmossdk.io/simapp/params"
-	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
-	"github.com/cosmos/cosmos-sdk/x/auth/migrations/legacytx"
-	authtx "github.com/cosmos/cosmos-sdk/x/auth/tx"
-	"github.com/cosmos/gogoproto/proto"
-	evmv1 "github.com/evmos/ethermint/api/ethermint/evm/v1"
-	ethermintcmdcfg "github.com/evmos/ethermint/cmd/config"
-	ethermintcodec "github.com/evmos/ethermint/encoding/codec"
-	"github.com/evmos/ethermint/ethereum/eip712"
-	evmtypes "github.com/evmos/ethermint/x/evm/types"
-	protov2 "google.golang.org/protobuf/proto"
-
 	sdkmath "cosmossdk.io/math"
-	"cosmossdk.io/x/tx/signing"
-	"github.com/cosmos/cosmos-sdk/codec"
-	"github.com/cosmos/cosmos-sdk/codec/address"
-	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
+	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	evmdconfig "github.com/cosmos/evm/cmd/evmd/config"
+	"github.com/cosmos/evm/evmd/eips"
+	evmvmtypes "github.com/cosmos/evm/x/vm/types"
+	evmvmcore "github.com/ethereum/go-ethereum/core/vm"
 )
 
 const (
@@ -60,17 +50,49 @@ var (
 )
 
 func init() {
-	SetAddressPrefixes()
-	RegisterDenoms()
+	registerDenoms()
+	setAddressPrefixes()
 }
 
-// RegisterDenoms registers token denoms.
-func RegisterDenoms() {
+var evmConfigSealed = false
+
+func SetupEvmConfig(chainID string) error {
+	if evmConfigSealed {
+		return nil
+	}
+
+	baseDenom, err := sdk.GetBaseDenom()
+	if err != nil {
+		return fmt.Errorf("failed to get base denom: %s", err)
+	}
+
+	ethCfg := evmvmtypes.DefaultChainConfig(chainID)
+
+	eips := map[int]func(*evmvmcore.JumpTable){
+		0o000: eips.Enable0000,
+		0o001: eips.Enable0001,
+		0o002: eips.Enable0002,
+	}
+	err = evmvmtypes.NewEVMConfigurator().
+		WithExtendedEips(eips).
+		WithChainConfig(ethCfg).
+		WithEVMCoinInfo(baseDenom, uint8(BaseDenomUnit)).
+		Configure()
+	if err != nil {
+		return fmt.Errorf("failed to setup EVMConfigurator: %s", err)
+	}
+
+	evmConfigSealed = true
+	return nil
+}
+
+// registerDenoms registers token denoms.
+func registerDenoms() {
 	sdk.DefaultBondDenom = BaseDenom
 	sdk.DefaultPowerReduction = PowerReduction
 
 	config := sdk.GetConfig()
-	ethermintcmdcfg.SetBip44CoinType(config)
+	evmdconfig.SetBip44CoinType(config)
 
 	if err := sdk.RegisterDenom(DisplayDenom, sdkmath.LegacyOneDec()); err != nil {
 		panic(err)
@@ -81,51 +103,11 @@ func RegisterDenoms() {
 	}
 }
 
-// SetAddressPrefixes builds the Config with Bech32 addressPrefix and publKeyPrefix for accounts, validators, and consensus nodes and verifies that addreeses have correct format.
-func SetAddressPrefixes() {
+// setAddressPrefixes builds the Config with Bech32 addressPrefix and publKeyPrefix for accounts, validators, and consensus nodes and verifies that addreeses have correct format.
+func setAddressPrefixes() {
 	config := sdk.GetConfig()
 	config.SetBech32PrefixForAccount(Bech32PrefixAccAddr, Bech32PrefixAccPub)
 	config.SetBech32PrefixForValidator(Bech32PrefixValAddr, Bech32PrefixValPub)
 	config.SetBech32PrefixForConsensusNode(Bech32PrefixConsAddr, Bech32PrefixConsPub)
 	config.SetAddressVerifier(wasmtypes.VerifyAddressLen())
-}
-
-func MakeEncodingConfig() simappparams.EncodingConfig {
-	signingOptions := signing.Options{
-		AddressCodec: address.Bech32Codec{
-			Bech32Prefix: sdk.GetConfig().GetBech32AccountAddrPrefix(),
-		},
-		ValidatorAddressCodec: address.Bech32Codec{
-			Bech32Prefix: sdk.GetConfig().GetBech32ValidatorAddrPrefix(),
-		},
-	}
-
-	// evm/MsgEthereumTx
-	signingOptions.DefineCustomGetSigners(protov2.MessageName(&evmv1.MsgEthereumTx{}), evmtypes.GetSignersFromMsgEthereumTxV2)
-
-	interfaceRegistry, err := codectypes.NewInterfaceRegistryWithOptions(codectypes.InterfaceRegistryOptions{
-		ProtoFiles:     proto.HybridResolver,
-		SigningOptions: signingOptions,
-	})
-	if err != nil {
-		panic(err)
-	}
-
-	appCodec := codec.NewProtoCodec(interfaceRegistry)
-	legacyAmino := codec.NewLegacyAmino()
-	encodingConfig := simappparams.EncodingConfig{
-		InterfaceRegistry: interfaceRegistry,
-		Codec:             appCodec,
-		TxConfig:          authtx.NewTxConfig(appCodec, authtx.DefaultSignModes),
-		Amino:             legacyAmino,
-	}
-
-	ethermintcodec.RegisterLegacyAminoCodec(legacyAmino)
-	ethermintcodec.RegisterInterfaces(interfaceRegistry)
-
-	legacytx.RegressionTestingAminoCodec = legacyAmino
-
-	eip712.SetEncodingConfig(encodingConfig)
-
-	return encodingConfig
 }

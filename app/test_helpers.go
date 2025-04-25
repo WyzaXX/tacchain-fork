@@ -56,7 +56,17 @@ func NewTacChainAppWithCustomOptions(t *testing.T, isCheckTx bool, invCheckPerio
 		Coins:   sdk.NewCoins(sdk.NewCoin(sdk.DefaultBondDenom, sdkmath.NewInt(100000000000000))),
 	}
 
-	app := NewTacChainApp(options.Logger, options.DB, nil, true, invCheckPeriod, options.AppOpts, options.WasmOpts, bam.SetChainID(DefaultChainID))
+	app := NewTacChainApp(
+		options.Logger,
+		options.DB,
+		nil,
+		true,
+		invCheckPeriod,
+		options.AppOpts,
+		options.WasmOpts,
+		SetupEvmConfig,
+		bam.SetChainID(DefaultChainID),
+	)
 	genesisState := app.DefaultGenesis()
 	genesisState, err = simtestutil.GenesisStateWithValSet(app.AppCodec(), genesisState, valSet, []authtypes.GenesisAccount{acc}, balance)
 	require.NoError(t, err)

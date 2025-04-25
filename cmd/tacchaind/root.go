@@ -11,11 +11,13 @@ import (
 
 	"cosmossdk.io/log"
 	"cosmossdk.io/simapp/params"
+	cmtcfg "github.com/cometbft/cometbft/config"
 	dbm "github.com/cosmos/cosmos-db"
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/config"
-	"github.com/cosmos/cosmos-sdk/crypto/keyring"
+	"github.com/cosmos/cosmos-sdk/client/flags"
 	"github.com/cosmos/cosmos-sdk/server"
+	serverconfig "github.com/cosmos/cosmos-sdk/server/config"
 	simtestutil "github.com/cosmos/cosmos-sdk/testutil/sims"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/tx/signing"
@@ -25,18 +27,21 @@ import (
 
 	"github.com/Asphere-xyz/tacchain/app"
 	wasmkeeper "github.com/CosmWasm/wasmd/x/wasm/keeper"
+	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 
-	etherminthd "github.com/evmos/ethermint/crypto/hd"
-	ethermintserverflags "github.com/evmos/ethermint/server/flags"
+	evmkeyring "github.com/cosmos/evm/crypto/keyring"
+	evmserverconfig "github.com/cosmos/evm/server/config"
 
-	rosettaCmd "github.com/cosmos/rosetta/cmd"
+	evmdcmd "github.com/cosmos/evm/cmd/evmd/cmd"
 )
 
 // NewRootCmd creates a new root command for tacchaind. It is called once in the
 // main function.
 func NewRootCmd() *cobra.Command {
-	cfg := sdk.GetConfig()
-	cfg.Seal()
+	temp := tempDir()
+	// cleanup temp dir after we are done with the tempApp, so we don't leave behind a
+	// new temporary directory for every invocation. See https://github.com/CosmWasm/wasmd/issues/2017
+	defer os.RemoveAll(temp)
 
 	tempApp := app.NewTacChainApp(
 		log.NewNopLogger(),
@@ -44,8 +49,9 @@ func NewRootCmd() *cobra.Command {
 		nil,
 		true,
 		0,
-		simtestutil.NewAppOptionsWithFlagHome(tempDir()),
+		simtestutil.NewAppOptionsWithFlagHome(temp),
 		[]wasmkeeper.Option{},
+		evmdcmd.NoOpEvmAppOptions,
 	)
 
 	encodingConfig := params.EncodingConfig{
@@ -62,9 +68,12 @@ func NewRootCmd() *cobra.Command {
 		WithLegacyAmino(encodingConfig.Amino).
 		WithInput(os.Stdin).
 		WithAccountRetriever(authtypes.AccountRetriever{}).
+		WithBroadcastMode(flags.FlagBroadcastMode).
 		WithHomeDir(app.DefaultNodeHome).
-		WithKeyringOptions(etherminthd.EthSecp256k1Option()).
-		WithViper(app.AppName)
+		WithViper(app.AppName).
+		// Cosmos EVM specific setup
+		WithKeyringOptions(evmkeyring.Option()).
+		WithLedgerHasProtobuf(true)
 
 	rootCmd := &cobra.Command{
 		Use:   "tacchaind",
@@ -74,6 +83,7 @@ func NewRootCmd() *cobra.Command {
 			cmd.SetOut(cmd.OutOrStdout())
 			cmd.SetErr(cmd.ErrOrStderr())
 
+			initClientCtx = initClientCtx.WithCmdContext(cmd.Context())
 			initClientCtx, err := client.ReadPersistentCommandFlags(initClientCtx, cmd.Flags())
 			if err != nil {
 				return err
@@ -94,7 +104,6 @@ func NewRootCmd() *cobra.Command {
 					EnabledSignModes:           enabledSignModes,
 					TextualCoinMetadataQueryFn: txmodule.NewGRPCCoinMetadataQueryFn(initClientCtx),
 				}
-
 				txConfig, err := tx.NewTxConfigWithOptions(
 					initClientCtx.Codec,
 					txConfigOpts,
@@ -117,24 +126,78 @@ func NewRootCmd() *cobra.Command {
 		},
 	}
 
-	initRootCmd(tempApp, encodingConfig, rootCmd, encodingConfig.TxConfig, tempApp.BasicModuleManager)
+	initRootCmd(tempApp, rootCmd)
 
 	// add keyring to autocli opts
 	autoCliOpts := tempApp.AutoCliOpts()
-	initClientCtx, _ = config.ReadDefaultValuesFromDefaultClientConfig(initClientCtx)
-	autoCliOpts.Keyring, _ = keyring.NewAutoCLIKeyring(initClientCtx.Keyring)
+	initClientCtx, _ = config.ReadFromClientConfig(initClientCtx)
 	autoCliOpts.ClientCtx = initClientCtx
 
 	if err := autoCliOpts.EnhanceRootCommand(rootCmd); err != nil {
 		panic(err)
 	}
 
-	rootCmd, err := ethermintserverflags.AddTxFlags(rootCmd)
-	if err != nil {
-		panic(err)
+	return rootCmd
+}
+
+// initCometBFTConfig helps to override default CometBFT Config values.
+// return cmtcfg.DefaultConfig if no custom configuration is required for the application.
+func initCometBFTConfig() *cmtcfg.Config {
+	cfg := cmtcfg.DefaultConfig()
+
+	// these values put a higher strain on node memory
+	// cfg.P2P.MaxNumInboundPeers = 100
+	// cfg.P2P.MaxNumOutboundPeers = 40
+
+	return cfg
+}
+
+// initAppConfig helps to override default appConfig template and configs.
+// return "", nil if no custom configuration is required for the application.
+func initAppConfig() (string, interface{}) {
+	// The following code snippet is just for reference.
+
+	type CustomAppConfig struct {
+		serverconfig.Config
+
+		Wasm wasmtypes.NodeConfig `mapstructure:"wasm"`
+
+		// Cosmos EVM configs
+		EVM     evmserverconfig.EVMConfig
+		JSONRPC evmserverconfig.JSONRPCConfig
+		TLS     evmserverconfig.TLSConfig
 	}
 
-	rootCmd.AddCommand(rosettaCmd.RosettaCommand(encodingConfig.InterfaceRegistry, encodingConfig.Codec))
+	// Optionally allow the chain developer to overwrite the SDK's default
+	// server config.
+	srvCfg := serverconfig.DefaultConfig()
+	// The SDK's default minimum gas price is set to "" (empty value) inside
+	// app.toml. If left empty by validators, the node will halt on startup.
+	// However, the chain developer can set a default app.toml value for their
+	// validators here.
+	//
+	// In summary:
+	// - if you leave srvCfg.MinGasPrices = "", all validators MUST tweak their
+	//   own app.toml config,
+	// - if you set srvCfg.MinGasPrices non-empty, validators CAN tweak their
+	//   own app.toml to override, or use this default value.
+	//
+	// In TacChain, we set the min gas prices to 0.
+	srvCfg.MinGasPrices = "0" + sdk.DefaultBondDenom
 
-	return rootCmd
+	// srvCfg.BaseConfig.IAVLDisableFastNode = true // disable fastnode by default
+
+	customAppConfig := CustomAppConfig{
+		Config:  *srvCfg,
+		Wasm:    wasmtypes.DefaultNodeConfig(),
+		EVM:     *evmserverconfig.DefaultEVMConfig(),
+		JSONRPC: *evmserverconfig.DefaultJSONRPCConfig(),
+		TLS:     *evmserverconfig.DefaultTLSConfig(),
+	}
+
+	customAppTemplate := serverconfig.DefaultConfigTemplate +
+		wasmtypes.DefaultConfigTemplate() +
+		evmserverconfig.DefaultEVMConfigTemplate
+
+	return customAppTemplate, customAppConfig
 }

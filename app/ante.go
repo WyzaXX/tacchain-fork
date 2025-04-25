@@ -17,14 +17,15 @@ import (
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	authante "github.com/cosmos/cosmos-sdk/x/auth/ante"
-	bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
+	sdkvesting "github.com/cosmos/cosmos-sdk/x/auth/vesting/types"
 
 	wasmkeeper "github.com/CosmWasm/wasmd/x/wasm/keeper"
 	wasmTypes "github.com/CosmWasm/wasmd/x/wasm/types"
-	vestingtypes "github.com/cosmos/cosmos-sdk/x/auth/vesting/types"
-	ethermintante "github.com/evmos/ethermint/app/ante"
-	etherminttypes "github.com/evmos/ethermint/types"
-	evmtypes "github.com/evmos/ethermint/x/evm/types"
+
+	evmcosmosante "github.com/cosmos/evm/ante/cosmos"
+	evmante "github.com/cosmos/evm/ante/evm"
+	evmanteinterfaces "github.com/cosmos/evm/ante/interfaces"
+	evmtypes "github.com/cosmos/evm/x/vm/types"
 )
 
 // HandlerOptions extend the SDK's AnteHandler options by requiring the IBC
@@ -32,19 +33,21 @@ import (
 type HandlerOptions struct {
 	authante.HandlerOptions
 
+	AccountKeeper evmanteinterfaces.AccountKeeper
+
 	IBCKeeper *keeper.Keeper
 
 	// CosmWasm
-	WasmConfig            *wasmTypes.WasmConfig
+	WasmConfig            *wasmTypes.NodeConfig
 	WasmKeeper            *wasmkeeper.Keeper
 	TXCounterStoreService corestoretypes.KVStoreService
 	CircuitKeeper         *circuitkeeper.Keeper
 
 	// Ethermint
-	FeeMarketKeeper   ethermintante.FeeMarketKeeper
-	EvmKeeper         ethermintante.EVMKeeper
-	DisabledAuthzMsgs []string
-	MaxTxGasWanted    uint64
+
+	FeeMarketKeeper evmanteinterfaces.FeeMarketKeeper
+	EvmKeeper       evmanteinterfaces.EVMKeeper
+	MaxTxGasWanted  uint64
 }
 
 // NewAnteHandler returns an ante handler responsible for attempting to route an
@@ -82,30 +85,22 @@ func NewAnteHandler(options HandlerOptions) (sdk.AnteHandler, error) {
 	) (newCtx sdk.Context, err error) {
 		var anteHandler sdk.AnteHandler
 
-		defer ethermintante.Recover(ctx.Logger(), &err)
-
-		// disable vesting message types
-		for _, msg := range tx.GetMsgs() {
-			switch msg.(type) {
-			case *vestingtypes.MsgCreateVestingAccount,
-				*vestingtypes.MsgCreatePeriodicVestingAccount,
-				*vestingtypes.MsgCreatePermanentLockedAccount:
-				return ctx, errors.New("vesting messages are not supported")
-			}
-		}
-
 		txWithExtensions, ok := tx.(authante.HasExtensionOptionsTx)
 		if ok {
 			opts := txWithExtensions.GetExtensionOptions()
 			if len(opts) > 0 {
 				switch typeURL := opts[0].GetTypeUrl(); typeURL {
-				case "/ethermint.evm.v1.ExtensionOptionsEthereumTx":
+				case "/cosmos.evm.vm.v1.ExtensionOptionsEthereumTx":
 					// handle as *evmtypes.MsgEthereumTx
-					anteHandler, err = newEthAnteHandler(options)
-				case "/ethermint.types.v1.ExtensionOptionsWeb3Tx":
-					// Deprecated: Handle as normal Cosmos SDK tx, except signature is checked for Legacy EIP712 representation
-					anteHandler, err = newLegacyCosmosAnteHandlerEip712(options)
-				case "/ethermint.types.v1.ExtensionOptionDynamicFeeTx":
+					anteHandler = sdk.ChainAnteDecorators(
+						evmante.NewEVMMonoDecorator(
+							options.AccountKeeper,
+							options.FeeMarketKeeper,
+							options.EvmKeeper,
+							options.MaxTxGasWanted,
+						),
+					)
+				case "/cosmos.evm.types.v1.ExtensionOptionDynamicFeeTx":
 					// cosmos-sdk tx with dynamic fee extension
 					anteHandler, err = newCosmosAnteHandler(options)
 				default:
@@ -136,38 +131,24 @@ func NewAnteHandler(options HandlerOptions) (sdk.AnteHandler, error) {
 	}, nil
 }
 
-func newEthAnteHandler(options HandlerOptions) (sdk.AnteHandler, error) {
-	evmAccountKeeper, ok := options.AccountKeeper.(evmtypes.AccountKeeper)
-	if !ok {
-		return nil, errors.New("account keeper does not implement evmtypes.AccountKeeper")
-	}
-
-	return sdk.ChainAnteDecorators(
-		ethermintante.NewEthSetUpContextDecorator(options.EvmKeeper),                         // outermost AnteDecorator. SetUpContext must be called first
-		ethermintante.NewEthMempoolFeeDecorator(options.EvmKeeper),                           // Check eth effective gas price against minimal-gas-prices
-		ethermintante.NewEthMinGasPriceDecorator(options.FeeMarketKeeper, options.EvmKeeper), // Check eth effective gas price against the global MinGasPrice
-		ethermintante.NewEthValidateBasicDecorator(options.EvmKeeper),
-		ethermintante.NewEthSigVerificationDecorator(options.EvmKeeper),
-		ethermintante.NewEthAccountVerificationDecorator(evmAccountKeeper, options.EvmKeeper),
-		ethermintante.NewCanTransferDecorator(options.EvmKeeper),
-		ethermintante.NewEthGasConsumeDecorator(options.EvmKeeper, options.MaxTxGasWanted),
-		ethermintante.NewEthIncrementSenderSequenceDecorator(evmAccountKeeper), // innermost AnteDecorator.
-		ethermintante.NewGasWantedDecorator(options.EvmKeeper, options.FeeMarketKeeper),
-		ethermintante.NewEthEmitEventDecorator(options.EvmKeeper), // emit eth tx hash and index at the very last ante handler.
-	), nil
-}
-
 func newCosmosAnteHandler(options HandlerOptions) (sdk.AnteHandler, error) {
 	return sdk.ChainAnteDecorators(
+		evmcosmosante.NewRejectMessagesDecorator(), // reject MsgEthereumTxs
+		evmcosmosante.NewAuthzLimiterDecorator( // disable the Msg types that cannot be included on an authz.MsgExec msgs field
+			sdk.MsgTypeURL(&evmtypes.MsgEthereumTx{}),
+			sdk.MsgTypeURL(&sdkvesting.MsgCreateVestingAccount{}),
+		),
 		authante.NewSetUpContextDecorator(),
 		wasmkeeper.NewLimitSimulationGasDecorator(options.WasmConfig.SimulationGasLimit), // after setup context to enforce limits early
 		wasmkeeper.NewCountTXDecorator(options.TXCounterStoreService),
 		wasmkeeper.NewGasRegisterDecorator(options.WasmKeeper.GetGasRegister()),
+		wasmkeeper.NewTxContractsDecorator(),
 		circuitante.NewCircuitBreakerDecorator(options.CircuitKeeper),
 		authante.NewExtensionOptionsDecorator(options.ExtensionOptionChecker),
 		authante.NewValidateBasicDecorator(),
 		authante.NewTxTimeoutHeightDecorator(),
 		authante.NewValidateMemoDecorator(options.AccountKeeper),
+		evmcosmosante.NewMinGasPriceDecorator(options.FeeMarketKeeper, options.EvmKeeper),
 		authante.NewConsumeGasForTxSizeDecorator(options.AccountKeeper),
 		authante.NewDeductFeeDecorator(options.AccountKeeper, options.BankKeeper, options.FeegrantKeeper, nil),
 		// SetPubKeyDecorator must be called before all signature verification decorators
@@ -177,37 +158,6 @@ func newCosmosAnteHandler(options HandlerOptions) (sdk.AnteHandler, error) {
 		authante.NewSigVerificationDecorator(options.AccountKeeper, options.SignModeHandler),
 		authante.NewIncrementSequenceDecorator(options.AccountKeeper),
 		ibcante.NewRedundantRelayDecorator(options.IBCKeeper),
+		evmante.NewGasWantedDecorator(options.EvmKeeper, options.FeeMarketKeeper),
 	), nil
-}
-
-// Deprecated: NewLegacyCosmosAnteHandlerEip712 creates an AnteHandler to process legacy EIP-712
-// transactions, as defined by the presence of an ExtensionOptionsWeb3Tx extension.
-func newLegacyCosmosAnteHandlerEip712(options HandlerOptions) (sdk.AnteHandler, error) {
-	evmAccountKeeper, ok := options.AccountKeeper.(evmtypes.AccountKeeper)
-	if !ok {
-		return nil, errors.New("account keeper does not implement evmtypes.AccountKeeper")
-	}
-
-	ethermintOptions := ethermintante.HandlerOptions{
-		AccountKeeper:          evmAccountKeeper,
-		BankKeeper:             options.BankKeeper.(bankkeeper.BaseKeeper),
-		SignModeHandler:        options.SignModeHandler,
-		FeegrantKeeper:         options.HandlerOptions.FeegrantKeeper,
-		SigGasConsumer:         ethermintante.DefaultSigVerificationGasConsumer,
-		IBCKeeper:              options.IBCKeeper,
-		EvmKeeper:              options.EvmKeeper,
-		FeeMarketKeeper:        options.FeeMarketKeeper,
-		MaxTxGasWanted:         options.MaxTxGasWanted,
-		ExtensionOptionChecker: etherminttypes.HasDynamicFeeExtensionOption,
-		TxFeeChecker:           ethermintante.NewDynamicFeeChecker(options.EvmKeeper),
-		DisabledAuthzMsgs: []string{
-			sdk.MsgTypeURL(&evmtypes.MsgEthereumTx{}),
-			sdk.MsgTypeURL(&vestingtypes.MsgCreateVestingAccount{}),
-			sdk.MsgTypeURL(&vestingtypes.MsgCreatePermanentLockedAccount{}),
-			sdk.MsgTypeURL(&vestingtypes.MsgCreatePeriodicVestingAccount{}),
-		},
-	}
-
-	// Deprecated: Handle as normal Cosmos SDK tx, except signature is checked for Legacy EIP712 representation
-	return ethermintante.NewLegacyCosmosAnteHandlerEip712(ethermintOptions), nil
 }
