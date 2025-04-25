@@ -100,13 +100,6 @@ jobs:
           go-version: "1.21"
           check-latest: true
       - run: make install
-      - name:
-          Tweak init.sh script
-          # Linux handles differently backslashes so we need to add an extra one
-        run: |
-          sed -i 's/allow-unprotected-txs = false\\/allow-unprotected-txs = false/g' ./contrib/localnet/init.sh
-          sed -i 's/\\allow-unprotected-txs = true/allow-unprotected-txs = true/g' ./contrib/localnet/init.sh
-          grep "allow-unprotected-txs" ./contrib/localnet/init.sh
       - name: Init and run localnet
         run: |
           make localnet &
@@ -127,4 +120,16 @@ jobs:
           go-version: "1.23.6"
           check-latest: true
       - run: make install
-      - run: make test
+      - run: make test-unit
+
+  test-e2e:
+    runs-on: ubuntu-latest
+    needs: test-build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.6"
+          check-latest: true
+      - run: make install
+      - run: make test-e2e

@@ -95,14 +95,16 @@ clean:
 ###                                 Tests                                   ###
 ###############################################################################
 
-test: test-unit
-test-all: test-unit test-race
+test: test-unit test-race test-e2e test-wasmd
 
 test-unit:
-	@VERSION=$(VERSION) go test -mod=readonly -tags='ledger test_ledger_mock' -v ./...
+	@VERSION=$(VERSION) go test -mod=readonly -tags='ledger test_ledger_mock' -v $(shell go list ./... | grep -v "tests/e2e")
 
 test-race:
 	@VERSION=$(VERSION) go test -mod=readonly -race -tags='ledger test_ledger_mock' ./...
+
+test-e2e:
+	@VERSION=$(VERSION) go test -mod=readonly -tags='ledger test_ledger_mock' -v ./tests/e2e/...
 
 test-cover:
 	@go test -mod=readonly -timeout 30m -race -coverprofile=coverage.txt -covermode=atomic -tags='ledger test_ledger_mock' ./...

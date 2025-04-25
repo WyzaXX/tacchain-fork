@@ -1,14 +1,16 @@
+// SPDX-License-Identifier: BUSL-1.1-or-later
+// SPDX-FileCopyrightText: 2025 Web3 Technologies Inc. <https://asphere.xyz/>
+// Copyright (c) 2025 Web3 Technologies Inc. All rights reserved.
+// Use of this software is governed by the Business Source License included in the LICENSE file <https://github.com/Asphere-xyz/tacchain/blob/main/LICENSE>.
 package e2e
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"time"
 )
 
@@ -36,36 +38,15 @@ func (s *TacchainTestSuite) SetupSuite() {
 func (s *TacchainTestSuite) initChain() error {
 	s.T().Log("Initializing chain...")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancel()
-
-	params := s.DefaultCommandParams()
-
-	_, err := DefaultExecuteCommand(ctx, params, "init", "test", "--default-denom", DefaultDenom)
+	nodeDir := s.homeDir
+	pwd, _ := os.Getwd()
+	initScript := filepath.Join(pwd, "../../contrib/localnet/init.sh")
+	cmd := exec.Command("bash", "-c", fmt.Sprintf("echo y | HOMEDIR=%s %s", nodeDir, initScript))
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	err := cmd.Run()
 	if err != nil {
 		return fmt.Errorf("failed to initialize chain: %v", err)
-	}
-
-	_, err = DefaultExecuteCommand(ctx, params, "keys", "add", "validator")
-	if err != nil {
-		return fmt.Errorf("failed to add validator key: %v", err)
-	}
-
-	genesisAmount := fmt.Sprintf("1000000000000000000000000000000%s", DefaultDenom)
-	_, err = DefaultExecuteCommand(ctx, params, "genesis", "add-genesis-account", "validator", genesisAmount)
-	if err != nil {
-		return fmt.Errorf("failed to add genesis account: %v", err)
-	}
-
-	gentxAmount := fmt.Sprintf("10000000000000000000000000000%s", DefaultDenom)
-	_, err = DefaultExecuteCommand(ctx, params, "genesis", "gentx", "validator", gentxAmount)
-	if err != nil {
-		return fmt.Errorf("failed to create gentx: %v", err)
-	}
-
-	_, err = DefaultExecuteCommand(ctx, params, "genesis", "collect-gentxs")
-	if err != nil {
-		return fmt.Errorf("failed to collect gentxs: %v", err)
 	}
 
 	if err := ModifyInitialChainConfig(s.homeDir); err != nil {
@@ -130,13 +111,6 @@ func ModifyInitialChainConfig(homeDir string) error {
 				params["no_base_fee"] = true
 			}
 		}
-
-		if mint, ok := appState["mint"].(map[string]any); ok {
-			// Modify blocks_per_year
-			if params, ok := mint["params"].(map[string]any); ok {
-				params["blocks_per_year"] = "10512000"
-			}
-		}
 	}
 
 	modifiedGenesis, err := json.MarshalIndent(genesis, "", "  ")
@@ -146,20 +120,6 @@ func ModifyInitialChainConfig(homeDir string) error {
 
 	if err := os.WriteFile(genesisPath, modifiedGenesis, 0644); err != nil {
 		return fmt.Errorf("failed to write modified genesis: %v", err)
-	}
-
-	configPath := filepath.Join(homeDir, "config", "config.toml")
-	configData, err := os.ReadFile(configPath)
-	if err != nil {
-		return fmt.Errorf("failed to read config file: %v", err)
-	}
-
-	// Modify block time
-	configStr := string(configData)
-	configStr = strings.Replace(configStr, `timeout_commit = "5s"`, `timeout_commit = "3s"`, 1)
-
-	if err := os.WriteFile(configPath, []byte(configStr), 0644); err != nil {
-		return fmt.Errorf("failed to write modified config: %v", err)
 	}
 
 	return nil

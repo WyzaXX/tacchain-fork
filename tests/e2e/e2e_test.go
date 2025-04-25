@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: BUSL-1.1-or-later
+// SPDX-FileCopyrightText: 2025 Web3 Technologies Inc. <https://asphere.xyz/>
+// Copyright (c) 2025 Web3 Technologies Inc. All rights reserved.
+// Use of this software is governed by the Business Source License included in the LICENSE file <https://github.com/Asphere-xyz/tacchain/blob/main/LICENSE>.
 package e2e
 
 import (
@@ -40,7 +44,7 @@ func (s *TacchainTestSuite) TestBankBalances() {
 	defer cancel()
 
 	params := s.CommandParamsHomeDir()
-	output, err := DefaultExecuteCommand(ctx, params, "status")
+	output, err := ExecuteCommand(ctx, params, "status")
 	require.NoError(s.T(), err, "Failed to get status: %s", output)
 
 	validatorAddr, err := GetAddress(ctx, s, "validator")
@@ -56,7 +60,7 @@ func (s *TacchainTestSuite) TestBankSend() {
 	defer cancel()
 
 	params := s.DefaultCommandParams()
-	_, err := DefaultExecuteCommand(ctx, params, "keys", "add", "recipient")
+	_, err := ExecuteCommand(ctx, params, "keys", "add", "recipient")
 	require.NoError(s.T(), err, "Failed to add recipient account")
 
 	recipientAddr, err := GetAddress(ctx, s, "recipient")
@@ -71,7 +75,7 @@ func (s *TacchainTestSuite) TestBankSend() {
 	initialRecipientBalance, err := QueryBankBalances(ctx, s, recipientAddr)
 	require.NoError(s.T(), err, "Failed to query recipient balance")
 
-	amount := int64(1000000)
+	amount := UTacAmount(1000000)
 	_, err = TxBankSend(ctx, s, "validator", recipientAddr, amount)
 	require.NoError(s.T(), err, "Failed to send tokens")
 
@@ -85,7 +89,7 @@ func (s *TacchainTestSuite) TestBankSend() {
 
 	require.NotEqual(s.T(), initialValidatorBalance, finalValidatorBalance, "Validator balance should have changed")
 	require.NotEqual(s.T(), initialRecipientBalance, finalRecipientBalance, "Recipient balance should have changed")
-	require.Contains(s.T(), finalRecipientBalance, UTacAmount(amount), "Recipient should have received the sent amount")
+	require.Contains(s.T(), finalRecipientBalance, amount, "Recipient should have received the sent amount")
 }
 
 func (s *TacchainTestSuite) TestInflationRate() {
@@ -93,7 +97,7 @@ func (s *TacchainTestSuite) TestInflationRate() {
 	defer cancel()
 
 	params := s.CommandParamsHomeDir()
-	output, err := DefaultExecuteCommand(ctx, params, "q", "mint", "params")
+	output, err := ExecuteCommand(ctx, params, "q", "mint", "params")
 	require.NoError(s.T(), err, "Failed to query mint params: %s", output)
 
 	inflationRateStr := parseField(output, "inflation_rate_change")
@@ -117,7 +121,7 @@ func (s *TacchainTestSuite) TestStaking() {
 	require.NoError(s.T(), err, "Failed to get validator address")
 
 	params := s.CommandParamsHomeDir()
-	output, err := DefaultExecuteCommand(ctx, params, "q", "staking", "validator", validatorAddr)
+	output, err := ExecuteCommand(ctx, params, "q", "staking", "validator", validatorAddr)
 	require.NoError(s.T(), err, "Failed to query validator info")
 
 	status := parseField(output, "status")
@@ -132,7 +136,7 @@ func (s *TacchainTestSuite) TestDelegation() {
 	defer cancel()
 
 	params := s.DefaultCommandParams()
-	_, err := DefaultExecuteCommand(ctx, params, "keys", "add", "delegator")
+	_, err := ExecuteCommand(ctx, params, "keys", "add", "delegator")
 	require.NoError(s.T(), err, "Failed to add delegator account")
 
 	delegatorAddr, err := GetAddress(ctx, s, "delegator")
@@ -141,25 +145,26 @@ func (s *TacchainTestSuite) TestDelegation() {
 	validatorAddr, err := GetValidatorAddress(ctx, s)
 	require.NoError(s.T(), err, "Failed to get validator address")
 
-	amount := int64(1000000)
+	amount := UTacAmount(1000000)
 	_, err = TxBankSend(ctx, s, "validator", delegatorAddr, amount)
 	require.NoError(s.T(), err, "Failed to send tokens to delegator")
 
 	waitForNewBlock(s, nil)
 
-	delegationAmount := int64(500000)
-	_, err = DefaultExecuteCommand(ctx, params, "tx", "staking", "delegate", validatorAddr,
-		UTacAmount(delegationAmount), "--from", "delegator", "-y")
+	delegationAmount := UTacAmount(500000)
+	require.NoError(s.T(), err, "Failed to parse delegation amount")
+
+	_, err = ExecuteCommand(ctx, params, "tx", "staking", "delegate", validatorAddr,
+		delegationAmount, "--from", "delegator", "-y")
 	require.NoError(s.T(), err, "Failed to delegate tokens")
 
 	waitForNewBlock(s, nil)
 
-	output, err := DefaultExecuteCommand(ctx, params, "q", "staking", "delegation", delegatorAddr, validatorAddr)
+	output, err := ExecuteCommand(ctx, params, "q", "staking", "delegation", delegatorAddr, validatorAddr)
 	require.NoError(s.T(), err, "Failed to query delegation")
 
 	delegatedAmount := parseBalanceAmount(output)
-	require.Contains(s.T(), delegatedAmount, UTacAmount(delegationAmount),
-		"Delegated amount should match")
+	require.Contains(s.T(), delegatedAmount, delegationAmount, "Delegated amount should match")
 }
 
 func (s *TacchainTestSuite) TestFeemarketParams() {
@@ -168,7 +173,7 @@ func (s *TacchainTestSuite) TestFeemarketParams() {
 
 	params := s.CommandParamsHomeDir()
 
-	output, err := DefaultExecuteCommand(ctx, params, "q", "feemarket", "params")
+	output, err := ExecuteCommand(ctx, params, "q", "feemarket", "params")
 	require.NoError(s.T(), err, "Failed to query feemarket parameters")
 
 	noBaseFee := parseField(output, "no_base_fee")
@@ -179,7 +184,7 @@ func (s *TacchainTestSuite) TestFeemarketParams() {
 	proposalFile, err := CreateFeemarketProposalFile(s, newBaseFee)
 	require.NoError(s.T(), err, "Failed to create proposal file")
 
-	proposalOutput, err := DefaultExecuteCommand(ctx, s.DefaultCommandParams(), "tx", "gov", "submit-proposal", proposalFile, "--from", "validator", "-y")
+	proposalOutput, err := ExecuteCommand(ctx, s.DefaultCommandParams(), "tx", "gov", "submit-proposal", proposalFile, "--from", "validator", "-y")
 	require.NoError(s.T(), err, "Failed to submit proposal")
 
 	txHash := parseField(proposalOutput, "txhash")
@@ -187,13 +192,13 @@ func (s *TacchainTestSuite) TestFeemarketParams() {
 
 	waitForNewBlock(s, nil)
 
-	_, err = DefaultExecuteCommand(ctx, params, "q", "tx", txHash)
+	_, err = ExecuteCommand(ctx, params, "q", "tx", txHash)
 	require.NoError(s.T(), err, "Failed to query transaction")
 
-	_, err = DefaultExecuteCommand(ctx, params, "q", "gov", "proposal", "1")
+	_, err = ExecuteCommand(ctx, params, "q", "gov", "proposal", "1")
 	require.NoError(s.T(), err, "Failed to query proposal info")
 
-	output, err = DefaultExecuteCommand(ctx, s.DefaultCommandParams(), "tx", "gov", "vote", "1", "yes", "--from", "validator", "-y")
+	output, err = ExecuteCommand(ctx, s.DefaultCommandParams(), "tx", "gov", "vote", "1", "yes", "--from", "validator", "-y")
 	require.NoError(s.T(), err, "Failed to vote on proposal")
 
 	txHash = parseField(output, "txhash")
@@ -201,7 +206,7 @@ func (s *TacchainTestSuite) TestFeemarketParams() {
 
 	waitForNewBlock(s, nil)
 
-	output, err = DefaultExecuteCommand(ctx, params, "q", "feemarket", "params")
+	output, err = ExecuteCommand(ctx, params, "q", "feemarket", "params")
 	require.NoError(s.T(), err, "Failed to query updated feemarket parameters")
 
 	updatedNoBaseFee := parseField(output, "no_base_fee")
@@ -218,7 +223,7 @@ func (s *TacchainTestSuite) TestStakingAPR() {
 
 	params := s.DefaultCommandParams()
 
-	_, err := DefaultExecuteCommand(ctx, params, "keys", "add", "apr_delegator")
+	_, err := ExecuteCommand(ctx, params, "keys", "add", "apr_delegator")
 	require.NoError(s.T(), err, "Failed to add delegator account")
 
 	delegatorAddr, err := GetAddress(ctx, s, "apr_delegator")
@@ -227,7 +232,7 @@ func (s *TacchainTestSuite) TestStakingAPR() {
 	validatorAddr, err := GetValidatorAddress(ctx, s)
 	require.NoError(s.T(), err, "Failed to get validator address")
 
-	initialAmount := int64(1000000)
+	initialAmount := UTacAmount(1000000)
 	_, err = TxBankSend(ctx, s, "validator", delegatorAddr, initialAmount)
 	require.NoError(s.T(), err, "Failed to send tokens to delegator")
 
@@ -235,19 +240,19 @@ func (s *TacchainTestSuite) TestStakingAPR() {
 
 	balance, err := QueryBankBalances(ctx, s, delegatorAddr)
 	require.NoError(s.T(), err, "Failed to query delegator balance")
-	require.Contains(s.T(), balance, UTacAmount(initialAmount), "Delegator should have received the tokens")
+	require.Contains(s.T(), balance, initialAmount, "Delegator should have received the tokens")
 
 	delegationAmount := initialAmount
-	output, err := DefaultExecuteCommand(ctx, params, "tx", "staking", "delegate", validatorAddr,
-		UTacAmount(delegationAmount), "--from", "apr_delegator", "--gas", "200000", "-y")
+	output, err := ExecuteCommand(ctx, params, "tx", "staking", "delegate", validatorAddr,
+		delegationAmount, "--from", "apr_delegator", "--gas", "200000", "-y")
 	require.NoError(s.T(), err, "Failed to delegate tokens: %s", output)
 
 	waitForNewBlock(s, nil)
 
-	output, err = DefaultExecuteCommand(ctx, params, "q", "staking", "delegation", delegatorAddr, validatorAddr)
+	output, err = ExecuteCommand(ctx, params, "q", "staking", "delegation", delegatorAddr, validatorAddr)
 	delegatedAmount := parseBalanceAmount(output)
 	require.NoError(s.T(), err, "Failed to query delegation")
-	require.Contains(s.T(), delegatedAmount, UTacAmount(delegationAmount), "Delegation amount should match")
+	require.Contains(s.T(), delegatedAmount, delegationAmount, "Delegation amount should match")
 
 	// Wait for a few blocks to accumulate rewards
 	blocksWaited := int(3)
@@ -255,7 +260,7 @@ func (s *TacchainTestSuite) TestStakingAPR() {
 		waitForNewBlock(s, nil)
 	}
 
-	output, err = DefaultExecuteCommand(ctx, params, "q", "distribution", "rewards", delegatorAddr)
+	output, err = ExecuteCommand(ctx, params, "q", "distribution", "rewards", delegatorAddr)
 	require.NoError(s.T(), err, "Failed to query rewards")
 
 	rewardsAmount := parseBalanceAmount(output)
@@ -263,21 +268,16 @@ func (s *TacchainTestSuite) TestStakingAPR() {
 
 	rewards, err := strconv.ParseInt(rewardsAmount, 10, 64)
 	require.NoError(s.T(), err, "Failed to parse rewards amount")
+	fmt.Print("Rewards: ", rewards, "\n")
 
-	blocksPerYear := int(10512000)
-	rewardsPerBlock := rewards / int64(blocksWaited)
-	rewardsForAYear := rewardsPerBlock * int64(blocksPerYear)
-	apr := float64(rewardsForAYear) / float64(initialAmount) * 100
-	fmt.Print("APR: ", apr, "%\n")
-	// amount delegated is 1 000 000 utac
-	// and blocksPerYer is set to 10512000 at chain init
-	// for 3 blocks we get ~ 3 272 261 969 052 000 000 utac ??????
-	// or 1 090 753 989 684 000 000 utac per block ???
-	// the rewards are insanely high... over 7 000 000 000 000 00.0% ???
-	// s.T().Logf("Initial stake: %d%s", initialAmount, DefaultDenom)
-	// s.T().Logf("Rewards after %d blocks: %d%s", blocksWaited, rewards, DefaultDenom)
-	// s.T().Logf("Calculated APR: %.2f%%", apr)
+	// blocksPerYear := int(10512000)
+	// rewardsPerBlock := rewards / int64(blocksWaited)
+	// rewardsForAYear := rewardsPerBlock * int64(blocksPerYear)
+	//TODO: check if this formula is correct
+	// apr := float64(rewardsForAYear) / float64(initialAmount) * 100
+	// fmt.Print("APR: ", apr, "%\n")
 
+	// TODO: uncomment this and tweak the values of expected APR
 	// require.Greater(s.T(), apr, 5.0, "APR should be greater than 5%")
 	// require.Less(s.T(), apr, 20.0, "APR should be less than 20%")
 }

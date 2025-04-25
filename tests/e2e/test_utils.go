@@ -1,7 +1,12 @@
+// SPDX-License-Identifier: BUSL-1.1-or-later
+// SPDX-FileCopyrightText: 2025 Web3 Technologies Inc. <https://asphere.xyz/>
+// Copyright (c) 2025 Web3 Technologies Inc. All rights reserved.
+// Use of this software is governed by the Business Source License included in the LICENSE file <https://github.com/Asphere-xyz/tacchain/blob/main/LICENSE>.
 package e2e
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -53,9 +58,8 @@ func (s *TacchainTestSuite) DefaultCommandParams() CommandParams {
 	}
 }
 
-func DefaultExecuteCommand(ctx context.Context, params CommandParams, args ...string) (string, error) {
+func ExecuteBaseCommand(ctx context.Context, params CommandParams, args []string, isJSON bool) (string, error) {
 	cmd := exec.CommandContext(ctx, "tacchaind", args...)
-
 	cmd.Args = append(cmd.Args, "--home", params.HomeDir)
 
 	if params.ChainID != "" {
@@ -66,13 +70,25 @@ func DefaultExecuteCommand(ctx context.Context, params CommandParams, args ...st
 		cmd.Args = append(cmd.Args, "--keyring-backend", params.KeyringBackend)
 	}
 
+	if isJSON {
+		cmd.Args = append(cmd.Args, "--output", "json")
+	}
+
 	output, err := cmd.CombinedOutput()
 	return string(output), err
 }
 
+func ExecuteCommand(ctx context.Context, params CommandParams, args ...string) (string, error) {
+	return ExecuteBaseCommand(ctx, params, args, true)
+}
+
+func ExecuteAddressCommand(ctx context.Context, params CommandParams, args ...string) (string, error) {
+	return ExecuteBaseCommand(ctx, params, args, false)
+}
+
 func GetAddress(ctx context.Context, s *TacchainTestSuite, keyName string) (string, error) {
 	params := s.DefaultCommandParams()
-	output, err := DefaultExecuteCommand(ctx, params, "keys", "show", keyName, "-a")
+	output, err := ExecuteAddressCommand(ctx, params, "keys", "show", keyName, "-a")
 	if err != nil {
 		return "", fmt.Errorf("failed to get %s address: %v", keyName, err)
 	}
@@ -81,85 +97,151 @@ func GetAddress(ctx context.Context, s *TacchainTestSuite, keyName string) (stri
 
 func QueryBankBalances(ctx context.Context, s *TacchainTestSuite, address string) (string, error) {
 	params := s.CommandParamsHomeDir()
-	output, err := DefaultExecuteCommand(ctx, params, "q", "bank", "balances", address)
+	output, err := ExecuteCommand(ctx, params, "q", "bank", "balances", address)
 	if err != nil {
 		return "", fmt.Errorf("failed to query balance: %v", err)
 	}
 	return parseBalanceAmount(output), nil
 }
 
-func TxBankSend(ctx context.Context, s *TacchainTestSuite, from, to string, amount int64) (string, error) {
+func TxBankSend(ctx context.Context, s *TacchainTestSuite, from, to string, utacAmount string) (string, error) {
 	params := s.DefaultCommandParams()
-	amountWithDenom := fmt.Sprintf("%d%s", amount, DefaultDenom)
-	output, err := DefaultExecuteCommand(ctx, params, "tx", "bank", "send", from, to, amountWithDenom, "--gas", "200000", "-y")
+	output, err := ExecuteCommand(ctx, params, "tx", "bank", "send", from, to, utacAmount, "--gas", "200000", "-y")
 	return output, err
 }
 
-func parseField(output string, fieldName string) string {
-	lines := strings.Split(output, "\n")
-	for _, line := range lines {
-		if strings.TrimSpace(line) == "" {
-			continue
-		}
+type BlockResponse struct {
+	Header struct {
+		Height string `json:"height"`
+	} `json:"header"`
+}
 
-		if strings.Contains(line, fieldName+":") {
-			parts := strings.Split(strings.TrimSpace(line), ":")
-			if len(parts) == 2 {
-				return strings.Trim(strings.TrimSpace(parts[1]), "\"")
+type GenericResponse map[string]interface{}
+
+type BalanceResponse struct {
+	Balances []struct {
+		Amount string `json:"amount"`
+		Denom  string `json:"denom"`
+	} `json:"balances"`
+	DelegationResponse struct {
+		Balance struct {
+			Amount string `json:"amount"`
+			Denom  string `json:"denom"`
+		} `json:"balance"`
+	} `json:"delegation_response"`
+}
+
+func parseBlockHeight(output string) int64 {
+	var response BlockResponse
+	//NOTE: In some outputs we have a sentence before the JSON object starts
+	jsonStart := strings.Index(output, "{")
+	if jsonStart > 0 {
+		output = output[jsonStart:]
+	}
+
+	if err := json.Unmarshal([]byte(output), &response); err != nil {
+		return -1
+	}
+
+	height, err := strconv.ParseInt(response.Header.Height, 10, 64)
+	if err != nil {
+		return -1
+	}
+	return height
+}
+
+func parseField(output string, fieldName string) string {
+	var response map[string]interface{}
+	jsonStart := strings.Index(output, "{")
+	if jsonStart > 0 {
+		output = output[jsonStart:]
+	}
+
+	if err := json.Unmarshal([]byte(output), &response); err != nil {
+		return ""
+	}
+
+	// Try direct access first
+	if value, exists := response[fieldName]; exists {
+		return convertValueToString(value)
+	}
+
+	// Check params
+	if params, exists := response["params"]; exists {
+		if paramsMap, ok := params.(map[string]interface{}); ok {
+			if value, exists := paramsMap[fieldName]; exists {
+				return convertValueToString(value)
 			}
 		}
 	}
+
+	// Check validator
+	if validator, exists := response["validator"]; exists {
+		if validatorMap, ok := validator.(map[string]interface{}); ok {
+			if value, exists := validatorMap[fieldName]; exists {
+				return convertValueToString(value)
+			}
+		}
+	}
+
+	// NOTE: Special case for authority account
+	// Check account -> value -> address
+	if account, exists := response["account"]; exists {
+		if accountMap, ok := account.(map[string]interface{}); ok {
+			if value, exists := accountMap["value"]; exists {
+				if valueMap, ok := value.(map[string]interface{}); ok {
+					if address, exists := valueMap["address"]; exists {
+						return convertValueToString(address)
+					}
+				}
+			}
+		}
+	}
+
 	return ""
 }
 
-func parseBalanceAmount(balanceOutput string) string {
-	lines := strings.Split(balanceOutput, "\n")
-	var amount, denom string
-	for _, line := range lines {
-		if strings.Contains(line, "amount:") {
-			parts := strings.Split(strings.TrimSpace(line), ":")
-			if len(parts) == 2 {
-				amount = strings.Trim(strings.TrimSpace(parts[1]), "\"")
-			}
-		}
-		if strings.Contains(line, "denom:") {
-			parts := strings.Split(strings.TrimSpace(line), ":")
-			if len(parts) == 2 {
-				denom = strings.Trim(strings.TrimSpace(parts[1]), "\"")
-			}
-		}
+func convertValueToString(value interface{}) string {
+	switch v := value.(type) {
+	case string:
+		return v
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64)
+	case bool:
+		return strconv.FormatBool(v)
+	default:
+		return fmt.Sprintf("%v", v)
 	}
-	if amount == "" {
+}
+
+func parseBalanceAmount(output string) string {
+	var response BalanceResponse
+	jsonStart := strings.Index(output, "{")
+	if jsonStart > 0 {
+		output = output[jsonStart:]
+	}
+
+	if err := json.Unmarshal([]byte(output), &response); err != nil {
 		return "0" + DefaultDenom
 	}
-	return amount + denom
+
+	// Check for delegation response first
+	if response.DelegationResponse.Balance.Amount != "" {
+		return response.DelegationResponse.Balance.Amount + response.DelegationResponse.Balance.Denom
+	}
+
+	// Fall back to regular balance response
+	if len(response.Balances) > 0 {
+		return response.Balances[0].Amount + response.Balances[0].Denom
+	}
+
+	return "0" + DefaultDenom
 }
 
 func killProcessOnPort(port int) error {
 	cmd := exec.Command("lsof", "-i", fmt.Sprintf(":%d", port), "-t")
 	output, err := cmd.Output()
 	if err != nil {
-		cmd = exec.Command("netstat", "-ano", "-p", "tcp")
-		output, err = cmd.Output()
-		if err != nil {
-			fmt.Printf("Warning: could not check for processes on port %d: %v\n", port, err)
-			return nil
-		}
-
-		lines := strings.Split(string(output), "\n")
-		for _, line := range lines {
-			if strings.Contains(line, fmt.Sprintf(":%d", port)) {
-				fields := strings.Fields(line)
-				if len(fields) > 0 {
-					pid := fields[len(fields)-1]
-					killCmd := exec.Command("kill", "-9", pid)
-					if err := killCmd.Run(); err != nil {
-						fmt.Printf("Warning: failed to kill process %s: %v\n", pid, err)
-					}
-					fmt.Printf("Killed process %s on port %d\n", pid, port)
-				}
-			}
-		}
 		return nil
 	}
 
@@ -179,31 +261,12 @@ func killProcessOnPort(port int) error {
 func getCurrentBlockHeight(s *TacchainTestSuite) int64 {
 	ctx := context.Background()
 	params := s.CommandParamsHomeDir()
-	output, err := DefaultExecuteCommand(ctx, params, "q", "block")
+	output, err := ExecuteCommand(ctx, params, "q", "block")
 	if err != nil {
 		return -1
 	}
 
 	return parseBlockHeight(string(output))
-}
-
-func parseBlockHeight(output string) int64 {
-	lines := strings.Split(output, "\n  ")
-	for i := 1; i < len(lines); i++ {
-		line := lines[i]
-		if strings.Contains(line, "height:") {
-			parts := strings.Split(line, ":")
-			if len(parts) == 2 {
-				heightStr := strings.TrimSpace(parts[1])
-				height, err := strconv.ParseInt(strings.Trim(heightStr, `"`), 10, 64)
-				if err == nil {
-					return height
-				}
-			}
-		}
-	}
-
-	return -1
 }
 
 func waitForNewBlock(s *TacchainTestSuite, stderr io.ReadCloser) {
@@ -228,7 +291,7 @@ func waitForNewBlock(s *TacchainTestSuite, stderr io.ReadCloser) {
 			s.T().Fatalf("Chain failed to produce new block after %d attempts", maxAttempts)
 		}
 
-		time.Sleep(2 * time.Second)
+		time.Sleep(3 * time.Second)
 		s.T().Logf("Waiting for new block (attempt %d/%d)", attempt, maxAttempts)
 	}
 }
@@ -238,18 +301,12 @@ func UTacAmount(amount int64) string {
 }
 
 func GetValidatorAddress(ctx context.Context, s *TacchainTestSuite) (string, error) {
-	params := s.CommandParamsHomeDir()
-	output, err := DefaultExecuteCommand(ctx, params, "q", "staking", "historical-info", "1")
+	params := s.DefaultCommandParams()
+	validatorAddr, err := ExecuteAddressCommand(ctx, params, "keys", "show", "validator", "--bech", "val", "-a")
 	if err != nil {
 		return "", fmt.Errorf("failed to query validator info: %v", err)
 	}
-
-	validatorAddr := parseField(output, "operator_address")
-	if validatorAddr == "" {
-		return "", fmt.Errorf("validator operator address is empty")
-	}
-
-	return validatorAddr, nil
+	return strings.TrimSpace(validatorAddr), nil
 }
 
 func CreateFeemarketProposalFile(s *TacchainTestSuite, newBaseFee string) (string, error) {
@@ -257,7 +314,7 @@ func CreateFeemarketProposalFile(s *TacchainTestSuite, newBaseFee string) (strin
 	defer cancel()
 
 	params := s.CommandParamsHomeDir()
-	output, err := DefaultExecuteCommand(ctx, params, "q", "auth", "module-account", "gov")
+	output, err := ExecuteCommand(ctx, params, "q", "auth", "module-account", "gov")
 	if err != nil {
 		return "", fmt.Errorf("failed to get governance module address: %v", err)
 	}
