@@ -176,10 +176,12 @@ func (s *TacchainTestSuite) TestFeemarketParams() {
 	noBaseFee := parseField(output, "no_base_fee")
 	require.NotEmpty(s.T(), noBaseFee, "Base fee should not be empty")
 
-	newBaseFee := "777777777"
+	newBaseFee := "777777777.000000000000000000"
 
 	proposalFile, err := CreateFeemarketProposalFile(s, newBaseFee)
 	require.NoError(s.T(), err, "Failed to create proposal file")
+
+	waitForNewBlock(s, nil)
 
 	proposalOutput, err := ExecuteCommand(ctx, s.DefaultCommandParams(), "tx", "gov", "submit-proposal", proposalFile, "--from", "validator", "-y")
 	if err != nil {
@@ -209,9 +211,9 @@ func (s *TacchainTestSuite) TestFeemarketParams() {
 	output, err = ExecuteCommand(ctx, params, "q", "feemarket", "params")
 	require.NoError(s.T(), err, "Failed to query updated feemarket parameters")
 
+	expectedNoBaseFee := "false"
 	updatedNoBaseFee := parseField(output, "no_base_fee")
-	// NOTE: the param is removed if its bool and its value is set to false
-	require.Equal(s.T(), "", updatedNoBaseFee, "Base fee bool should be updated")
+	require.Equal(s.T(), expectedNoBaseFee, updatedNoBaseFee, "Base fee bool should be updated")
 
 	updatedBaseFee := parseField(output, "base_fee")
 	require.Equal(s.T(), newBaseFee, updatedBaseFee, "Base fee should be updated")

@@ -75,7 +75,13 @@ func ExecuteBaseCommand(ctx context.Context, params CommandParams, args []string
 	}
 
 	output, err := cmd.CombinedOutput()
-	return string(output), err
+	strOutput := string(output)
+
+	// NOTE: This Warning gets thrown on go 1.24 and gets applied to the output
+	sonicWarning := "WARNING:(ast) sonic only supports go1.17~1.23, but your environment is not suitable\n"
+	strOutput = strings.Replace(strOutput, sonicWarning, "", 1)
+
+	return strOutput, err
 }
 
 func ExecuteCommand(ctx context.Context, params CommandParams, args ...string) (string, error) {
@@ -327,7 +333,7 @@ func CreateFeemarketProposalFile(s *TacchainTestSuite, newBaseFee string) (strin
 	proposalContent := fmt.Sprintf(`{ 
 	"messages": [
 		{
-			"@type": "cosmos.evm.feemarket.v1.MsgUpdateParams",
+			"@type": "/cosmos.evm.feemarket.v1.MsgUpdateParams",
 			"authority": "%s",
 			"params": {
 				"no_base_fee": false,
@@ -347,15 +353,11 @@ func CreateFeemarketProposalFile(s *TacchainTestSuite, newBaseFee string) (strin
 	"expedited": false
 }`, governanceAddr, newBaseFee)
 
-	fmt.Printf("Governance Address: %s\n", governanceAddr)
-	fmt.Printf("Proposal Content: %s\n", proposalContent)
-
 	proposalFile := filepath.Join(s.homeDir, "draft_proposal.json")
 	err = os.WriteFile(proposalFile, []byte(proposalContent), 0644)
 	if err != nil {
 		return "", fmt.Errorf("failed to write proposal file: %v", err)
 	}
 
-	fmt.Printf("Proposal File Path: %s\n", proposalFile)
 	return proposalFile, nil
 }
