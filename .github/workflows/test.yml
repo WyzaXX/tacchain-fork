@@ -102,7 +102,7 @@ jobs:
       - run: make install
       - name: Init and run localnet
         run: |
-          make localnet &
+          echo y | make localnet &
           while ! tacchaind query block --type=height 3; do sleep 5; done
       - name: Send tokens and publish contract
         run: |
