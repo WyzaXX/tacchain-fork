@@ -15,9 +15,9 @@ import (
 	abci "github.com/cometbft/cometbft/abci/types"
 	dbm "github.com/cosmos/cosmos-db"
 	"github.com/cosmos/gogoproto/proto"
-	"github.com/cosmos/ibc-go/modules/capability"
-	capabilitykeeper "github.com/cosmos/ibc-go/modules/capability/keeper"
-	capabilitytypes "github.com/cosmos/ibc-go/modules/capability/types"
+	// "github.com/cosmos/ibc-go/modules/capability"
+	// capabilitykeeper "github.com/cosmos/ibc-go/modules/capability/keeper"
+	// capabilitytypes "github.com/cosmos/ibc-go/modules/capability/types"
 	ica "github.com/cosmos/ibc-go/v10/modules/apps/27-interchain-accounts"
 	icacontroller "github.com/cosmos/ibc-go/v10/modules/apps/27-interchain-accounts/controller"
 	icacontrollerkeeper "github.com/cosmos/ibc-go/v10/modules/apps/27-interchain-accounts/controller/keeper"
@@ -193,14 +193,14 @@ type TacChainApp struct {
 	interfaceRegistry types.InterfaceRegistry
 
 	// keys to access the substores
-	keys    map[string]*storetypes.KVStoreKey
-	tkeys   map[string]*storetypes.TransientStoreKey
-	memKeys map[string]*storetypes.MemoryStoreKey
+	keys  map[string]*storetypes.KVStoreKey
+	tkeys map[string]*storetypes.TransientStoreKey
+	// memKeys map[string]*storetypes.MemoryStoreKey
 
 	// keepers
-	AccountKeeper         authkeeper.AccountKeeper
-	BankKeeper            bankkeeper.BaseKeeper
-	CapabilityKeeper      *capabilitykeeper.Keeper
+	AccountKeeper authkeeper.AccountKeeper
+	BankKeeper    bankkeeper.BaseKeeper
+	// CapabilityKeeper      *capabilitykeeper.Keeper
 	StakingKeeper         *stakingkeeper.Keeper
 	SlashingKeeper        slashingkeeper.Keeper
 	MintKeeper            mintkeeper.Keeper
@@ -253,10 +253,11 @@ func NewTacChainApp(
 	loadLatest bool,
 	invCheckPeriod uint,
 	appOpts servertypes.AppOptions,
+	evmChainId uint64,
 	evmAppOptions evmd.EVMOptionsFn,
 	baseAppOptions ...func(*baseapp.BaseApp),
 ) *TacChainApp {
-	encodingConfig := evmencoding.MakeConfig()
+	encodingConfig := evmencoding.MakeConfig(evmChainId)
 
 	// Below we could construct and set an application specific mempool and
 	// ABCI 1.0 PrepareProposal and ProcessProposal handlers. These defaults are
@@ -293,7 +294,7 @@ func NewTacChainApp(
 	bApp.SetTxEncoder(encodingConfig.TxConfig.TxEncoder())
 
 	// initialize the Cosmos EVM application configuration
-	if err := evmAppOptions(bApp.ChainID()); err != nil {
+	if err := evmAppOptions(evmChainId); err != nil {
 		panic(err)
 	}
 
@@ -304,7 +305,8 @@ func NewTacChainApp(
 		evidencetypes.StoreKey, circuittypes.StoreKey,
 		authzkeeper.StoreKey, nftkeeper.StoreKey, group.StoreKey,
 		// non sdk store keys
-		capabilitytypes.StoreKey, ibcexported.StoreKey, ibctransfertypes.StoreKey,
+		// capabilitytypes.StoreKey,
+		ibcexported.StoreKey, ibctransfertypes.StoreKey,
 		// ibcfeetypes.StoreKey,
 		icahosttypes.StoreKey, icacontrollertypes.StoreKey,
 		// Cosmos EVM store keys
@@ -312,7 +314,7 @@ func NewTacChainApp(
 	)
 
 	tkeys := storetypes.NewTransientStoreKeys(paramstypes.TStoreKey, evmvmtypes.TransientKey, evmfeemarkettypes.TransientKey)
-	memKeys := storetypes.NewMemoryStoreKeys(capabilitytypes.MemStoreKey)
+	// memKeys := storetypes.NewMemoryStoreKeys(capabilitytypes.MemStoreKey)
 
 	// register streaming services
 	if err := bApp.RegisterStreamingServices(appOpts, keys); err != nil {
@@ -327,7 +329,7 @@ func NewTacChainApp(
 		interfaceRegistry: encodingConfig.InterfaceRegistry,
 		keys:              keys,
 		tkeys:             tkeys,
-		memKeys:           memKeys,
+		// memKeys:           memKeys,
 	}
 
 	app.ParamsKeeper = initParamsKeeper(
@@ -350,20 +352,20 @@ func NewTacChainApp(
 	bApp.SetParamStore(app.ConsensusParamsKeeper.ParamsStore)
 
 	// add capability keeper and ScopeToModule for ibc module
-	app.CapabilityKeeper = capabilitykeeper.NewKeeper(
-		encodingConfig.Codec,
-		keys[capabilitytypes.StoreKey],
-		memKeys[capabilitytypes.MemStoreKey],
-	)
+	// app.CapabilityKeeper = capabilitykeeper.NewKeeper(
+	// 	encodingConfig.Codec,
+	// 	keys[capabilitytypes.StoreKey],
+	// 	memKeys[capabilitytypes.MemStoreKey],
+	// )
 
-	app.ScopedIBCKeeper = app.CapabilityKeeper.ScopeToModule(ibcexported.ModuleName)
-	app.ScopedICAHostKeeper = app.CapabilityKeeper.ScopeToModule(icahosttypes.SubModuleName)
-	app.ScopedICAControllerKeeper = app.CapabilityKeeper.ScopeToModule(icacontrollertypes.SubModuleName)
-	app.ScopedTransferKeeper = app.CapabilityKeeper.ScopeToModule(ibctransfertypes.ModuleName)
+	// app.ScopedIBCKeeper = app.CapabilityKeeper.ScopeToModule(ibcexported.ModuleName)
+	// app.ScopedICAHostKeeper = app.CapabilityKeeper.ScopeToModule(icahosttypes.SubModuleName)
+	// app.ScopedICAControllerKeeper = app.CapabilityKeeper.ScopeToModule(icacontrollertypes.SubModuleName)
+	// app.ScopedTransferKeeper = app.CapabilityKeeper.ScopeToModule(ibctransfertypes.ModuleName)
 
 	// Applications that wish to enforce statically created ScopedKeepers should call `Seal` after creating
 	// their scoped modules in `NewApp` with `ScopeToModule`
-	app.CapabilityKeeper.Seal()
+	// app.CapabilityKeeper.Seal()
 
 	// add keepers
 	app.AccountKeeper = authkeeper.NewAccountKeeper(
@@ -739,7 +741,7 @@ func NewTacChainApp(
 		consensus.NewAppModule(encodingConfig.Codec, app.ConsensusParamsKeeper),
 		circuit.NewAppModule(encodingConfig.Codec, app.CircuitKeeper),
 		// non sdk modules
-		capability.NewAppModule(encodingConfig.Codec, *app.CapabilityKeeper, false),
+		// capability.NewAppModule(encodingConfig.Codec, *app.CapabilityKeeper, false),
 		ibc.NewAppModule(app.IBCKeeper),
 		evmibctransfer.NewAppModule(app.TransferKeeper),
 		// ibcfee.NewAppModule(app.IBCFeeKeeper),
@@ -783,7 +785,7 @@ func NewTacChainApp(
 	// NOTE: staking module is required if HistoricalEntries param > 0
 	// NOTE: capability module's beginblocker must come before any modules using capabilities (e.g. IBC)
 	app.ModuleManager.SetOrderBeginBlockers(
-		capabilitytypes.ModuleName,
+		// capabilitytypes.ModuleName,
 		distrtypes.ModuleName,
 		stakingtypes.ModuleName,
 		slashingtypes.ModuleName,
@@ -830,7 +832,7 @@ func NewTacChainApp(
 		ibcexported.ModuleName,
 		icatypes.ModuleName,
 		// ibcfeetypes.ModuleName,
-		capabilitytypes.ModuleName,
+		// capabilitytypes.ModuleName,
 		authtypes.ModuleName,
 		banktypes.ModuleName,
 		distrtypes.ModuleName,
@@ -848,11 +850,8 @@ func NewTacChainApp(
 	// NOTE: The genutils module must occur after staking so that pools are
 	// properly initialized with tokens from genesis accounts.
 	// NOTE: The genutils module must also occur after auth so that it can access the params from auth.
-	// NOTE: Capability module must occur first so that it can initialize any capabilities
-	// so that other modules that want to create or claim capabilities afterwards in InitChain
-	// can do so safely.
 	genesisModuleOrder := []string{
-		capabilitytypes.ModuleName,
+		// capabilitytypes.ModuleName,
 		// simd modules
 		authtypes.ModuleName,
 		banktypes.ModuleName,
@@ -932,7 +931,7 @@ func NewTacChainApp(
 	// initialize stores
 	app.MountKVStores(keys)
 	app.MountTransientStores(tkeys)
-	app.MountMemoryStores(memKeys)
+	// app.MountMemoryStores(memKeys)
 
 	// initialize BaseApp
 	app.SetInitChainer(app.InitChainer)
@@ -1152,9 +1151,9 @@ func (app *TacChainApp) GetTKey(storeKey string) *storetypes.TransientStoreKey {
 // GetMemKey returns the MemStoreKey for the provided mem key.
 //
 // NOTE: This is solely used for testing purposes.
-func (app *TacChainApp) GetMemKey(storeKey string) *storetypes.MemoryStoreKey {
-	return app.memKeys[storeKey]
-}
+// func (app *TacChainApp) GetMemKey(storeKey string) *storetypes.MemoryStoreKey {
+// 	return app.memKeys[storeKey]
+// }
 
 // GetSubspace returns a param subspace for a given module name.
 //
