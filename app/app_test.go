@@ -16,7 +16,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/types/module"
 	"github.com/cosmos/cosmos-sdk/types/msgservice"
 
-	evmdcmd "github.com/cosmos/evm/cmd/evmd/cmd"
+	evmtestutil "github.com/cosmos/evm/evmd/testutil"
 )
 
 func TestExportAndBlockedAddrs(t *testing.T) {
@@ -61,7 +61,8 @@ func TestExportAndBlockedAddrs(t *testing.T) {
 		true,
 		0,
 		simtestutil.NewAppOptionsWithFlagHome(t.TempDir()),
-		evmdcmd.NoOpEvmAppOptions,
+		DefaultEVMChainID,
+		evmtestutil.NoOpEvmAppOptions,
 	)
 	_, err = app2.ExportAppStateAndValidators(false, []string{}, []string{})
 	require.NoError(t, err, "ExportAppStateAndValidators should not have an error")
@@ -106,4 +107,22 @@ func TestProtoAnnotations(t *testing.T) {
 	require.NoError(t, err)
 	err = msgservice.ValidateProtoAnnotations(r)
 	require.NoError(t, err)
+}
+
+func TestGetEVMChainID(t *testing.T) {
+	cosmosChainID := "tacchain_2391-1"
+	evmChainID := "2391"
+	expectedChainID := uint64(2391)
+
+	res, err := GetEVMChainID(cosmosChainID)
+	require.NoError(t, err, "should not return an error for valid chain ID")
+	require.Equal(t, expectedChainID, res, "should return the same chain ID")
+
+	res, err = GetEVMChainID(evmChainID)
+	require.NoError(t, err, "should not return an error for valid chain ID")
+	require.Equal(t, expectedChainID, res, "should return the same chain ID")
+
+	// Test with an empty chain ID
+	res, err = GetEVMChainID("")
+	require.Error(t, err, "should return an error for empty chain ID")
 }

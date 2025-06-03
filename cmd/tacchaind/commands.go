@@ -40,7 +40,7 @@ func initRootCmd(appInstance *app.TacChainApp, rootCmd *cobra.Command) {
 	cfg.Seal()
 
 	rootCmd.AddCommand(
-		evmclient.ValidateChainID(genutilcli.InitCmd(appInstance.BasicModuleManager, app.DefaultNodeHome)),
+		genutilcli.InitCmd(appInstance.BasicModuleManager, app.DefaultNodeHome),
 		genutilcli.Commands(appInstance.TxConfig(), appInstance.BasicModuleManager, app.DefaultNodeHome),
 		cmtcli.NewCompletionCmd(rootCmd, true),
 		debug.Cmd(),
@@ -138,6 +138,11 @@ func newApp(
 ) servertypes.Application {
 	baseappOptions := server.DefaultBaseappOptions(appOpts)
 
+	evmChainID, err := app.GetEVMChainID(cast.ToString(appOpts.Get(flags.FlagChainID)))
+	if err != nil {
+		panic("failed to get EVM chain ID: " + err.Error())
+	}
+
 	return app.NewTacChainApp(
 		logger,
 		db,
@@ -145,6 +150,7 @@ func newApp(
 		true,
 		cast.ToUint(appOpts.Get(server.FlagInvCheckPeriod)),
 		appOpts,
+		evmChainID,
 		app.SetupEvmConfig,
 		baseappOptions...,
 	)
@@ -178,6 +184,12 @@ func appExport(
 	viperAppOpts.Set(server.FlagInvCheckPeriod, 1)
 	appOpts = viperAppOpts
 
+	chainID := cast.ToString(appOpts.Get(flags.FlagChainID))
+	evmChainID, err := app.GetEVMChainID(chainID)
+	if err != nil {
+		panic("failed to get EVM chain ID: " + err.Error())
+	}
+
 	tacChainApp = app.NewTacChainApp(
 		logger,
 		db,
@@ -185,8 +197,9 @@ func appExport(
 		height == -1,
 		uint(1),
 		appOpts,
+		evmChainID,
 		app.SetupEvmConfig,
-		baseapp.SetChainID(cast.ToString(appOpts.Get(flags.FlagChainID))),
+		baseapp.SetChainID(chainID),
 	)
 
 	if height != -1 {

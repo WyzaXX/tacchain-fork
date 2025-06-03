@@ -15,6 +15,7 @@ import (
 	abci "github.com/cometbft/cometbft/abci/types"
 	dbm "github.com/cosmos/cosmos-db"
 	"github.com/cosmos/gogoproto/proto"
+
 	// "github.com/cosmos/ibc-go/modules/capability"
 	// capabilitykeeper "github.com/cosmos/ibc-go/modules/capability/keeper"
 	// capabilitytypes "github.com/cosmos/ibc-go/modules/capability/types"
@@ -151,10 +152,9 @@ import (
 	"github.com/cosmos/evm/x/vm"
 	evmcorevm "github.com/ethereum/go-ethereum/core/vm"
 
-	// NOTE: override ICS20 keeper to support IBC transfers of ERC20 tokens
 	evmcosmosante "github.com/cosmos/evm/ante/evm"
 	evmcosmostypes "github.com/cosmos/evm/types"
-	evmibctransfer "github.com/cosmos/evm/x/ibc/transfer"
+	evmibctransfer "github.com/cosmos/evm/x/ibc/transfer" // NOTE: override ICS20 keeper to support IBC transfers of ERC20 tokens
 	evmibctransferkeeper "github.com/cosmos/evm/x/ibc/transfer/keeper"
 	evmvmkeeper "github.com/cosmos/evm/x/vm/keeper"
 	evmvmtypes "github.com/cosmos/evm/x/vm/types"
@@ -221,7 +221,7 @@ type TacChainApp struct {
 	// IBCFeeKeeper        ibcfeekeeper.Keeper
 	ICAControllerKeeper icacontrollerkeeper.Keeper
 	ICAHostKeeper       icahostkeeper.Keeper
-	TransferKeeper      evmibctransferkeeper.Keeper
+	IBCTransferKeeper   evmibctransferkeeper.Keeper
 
 	// ScopedIBCKeeper           capabilitykeeper.ScopedKeeper
 	// ScopedICAHostKeeper       capabilitykeeper.ScopedKeeper
@@ -253,11 +253,11 @@ func NewTacChainApp(
 	loadLatest bool,
 	invCheckPeriod uint,
 	appOpts servertypes.AppOptions,
-	evmChainId uint64,
+	evmChainID uint64,
 	evmAppOptions evmd.EVMOptionsFn,
 	baseAppOptions ...func(*baseapp.BaseApp),
 ) *TacChainApp {
-	encodingConfig := evmencoding.MakeConfig(evmChainId)
+	encodingConfig := evmencoding.MakeConfig(evmChainID)
 
 	// Below we could construct and set an application specific mempool and
 	// ABCI 1.0 PrepareProposal and ProcessProposal handlers. These defaults are
@@ -294,7 +294,7 @@ func NewTacChainApp(
 	bApp.SetTxEncoder(encodingConfig.TxConfig.TxEncoder())
 
 	// initialize the Cosmos EVM application configuration
-	if err := evmAppOptions(evmChainId); err != nil {
+	if err := evmAppOptions(evmChainID); err != nil {
 		panic(err)
 	}
 
@@ -550,6 +550,15 @@ func NewTacChainApp(
 		runtime.ProvideCometInfoService(),
 	)
 	// If evidence needs to be handled for the app, set routes in router here and seal
+	// Note: The evidence precompile allows evidence to be submitted through an EVM transaction.
+	// If you implement a custom evidence handler in the router that changes token balances (e.g. penalizing
+	// addresses, deducting fees, etc.), be aware that the precompile logic (e.g. SetBalanceChangeEntries)
+	// must be properly integrated to reflect these balance changes in the EVM state. Otherwise, there is a risk
+	// of desynchronization between the Cosmos SDK state and the EVM state when evidence is submitted via the EVM.
+	//
+	// For example, if your custom evidence handler deducts tokens from a user’s account, ensure that the evidence
+	// precompile also applies these deductions through the EVM’s balance tracking. Failing to do so may cause
+	// inconsistencies in reported balances and break state synchronization.
 	app.EvidenceKeeper = *evidenceKeeper
 
 	// Cosmos EVM keepers
@@ -557,7 +566,6 @@ func NewTacChainApp(
 		encodingConfig.Codec, authtypes.NewModuleAddress(govtypes.ModuleName),
 		keys[evmfeemarkettypes.StoreKey],
 		tkeys[evmfeemarkettypes.TransientKey],
-		app.GetSubspace(evmfeemarkettypes.ModuleName),
 	)
 
 	// Set up EVM keeper
@@ -575,7 +583,7 @@ func NewTacChainApp(
 		app.StakingKeeper,
 		app.FeeMarketKeeper,
 		&app.Erc20Keeper,
-		tracer, app.GetSubspace(evmvmtypes.ModuleName),
+		tracer,
 	)
 
 	app.Erc20Keeper = evmerc20keeper.NewKeeper(
@@ -586,12 +594,11 @@ func NewTacChainApp(
 		app.BankKeeper,
 		app.EVMKeeper,
 		app.StakingKeeper,
-		app.AuthzKeeper,
-		&app.TransferKeeper,
+		&app.IBCTransferKeeper,
 	)
 
 	// instantiate IBC transfer keeper AFTER the ERC-20 keeper to use it in the instantiation
-	app.TransferKeeper = evmibctransferkeeper.NewKeeper(
+	app.IBCTransferKeeper = evmibctransferkeeper.NewKeeper(
 		encodingConfig.Codec,
 		runtime.NewKVStoreService(keys[ibctransfertypes.StoreKey]),
 		app.GetSubspace(ibctransfertypes.ModuleName),
@@ -671,11 +678,11 @@ func NewTacChainApp(
 
 	// Create Transfer Stack
 	var ibcTransferStack porttypes.IBCModule
-	ibcTransferStack = evmibctransfer.NewIBCModule(app.TransferKeeper)
+	ibcTransferStack = evmibctransfer.NewIBCModule(app.IBCTransferKeeper)
 	ibcTransferStack = evmerc20.NewIBCMiddleware(app.Erc20Keeper, ibcTransferStack)
 
 	var ibcv2TransferStack ibcapi.IBCModule
-	ibcv2TransferStack = ibctransferv2.NewIBCModule(app.TransferKeeper)
+	ibcv2TransferStack = ibctransferv2.NewIBCModule(app.IBCTransferKeeper)
 	ibcv2TransferStack = evmerc20v2.NewIBCMiddleware(ibcv2TransferStack, app.Erc20Keeper)
 
 	// Create static IBC router, add app routes, then set and seal it
@@ -690,6 +697,12 @@ func NewTacChainApp(
 	app.IBCKeeper.SetRouter(ibcRouter)
 	app.IBCKeeper.SetRouterV2(ibcv2Router)
 
+	// Light client modules
+	clientKeeper := app.IBCKeeper.ClientKeeper
+	storeProvider := app.IBCKeeper.ClientKeeper.GetStoreProvider()
+	tmLightClientModule := ibctm.NewLightClientModule(encodingConfig.Codec, storeProvider)
+	clientKeeper.AddRoute(ibctm.ModuleName, &tmLightClientModule)
+
 	// NOTE: we are adding all available Cosmos EVM EVM extensions.
 	// Not all of them need to be enabled, which can be configured on a per-chain basis.
 	app.EVMKeeper.WithStaticPrecompiles(
@@ -698,13 +711,13 @@ func NewTacChainApp(
 			app.DistrKeeper,
 			app.BankKeeper,
 			app.Erc20Keeper,
-			app.AuthzKeeper,
-			app.TransferKeeper,
+			app.IBCTransferKeeper,
 			app.IBCKeeper.ChannelKeeper,
 			app.EVMKeeper,
 			app.GovKeeper,
 			app.SlashingKeeper,
 			app.EvidenceKeeper,
+			app.AppCodec(),
 		),
 	)
 
@@ -743,16 +756,16 @@ func NewTacChainApp(
 		// non sdk modules
 		// capability.NewAppModule(encodingConfig.Codec, *app.CapabilityKeeper, false),
 		ibc.NewAppModule(app.IBCKeeper),
-		evmibctransfer.NewAppModule(app.TransferKeeper),
+		evmibctransfer.NewAppModule(app.IBCTransferKeeper),
 		// ibcfee.NewAppModule(app.IBCFeeKeeper),
 		ica.NewAppModule(&app.ICAControllerKeeper, &app.ICAHostKeeper),
-		ibctm.AppModule{},
+		ibctm.NewAppModule(tmLightClientModule),
 		// sdk
 		crisis.NewAppModule(app.CrisisKeeper, skipGenesisInvariants, app.GetSubspace(crisistypes.ModuleName)), // always be last to make sure that it checks for all invariants and not only part of them
 		// Cosmos EVM modules
-		vm.NewAppModule(app.EVMKeeper, app.AccountKeeper, app.GetSubspace(evmvmtypes.ModuleName)),
-		feemarket.NewAppModule(app.FeeMarketKeeper, app.GetSubspace(evmfeemarkettypes.ModuleName)),
-		evmerc20.NewAppModule(app.Erc20Keeper, app.AccountKeeper, app.GetSubspace(evmerc20types.ModuleName)),
+		vm.NewAppModule(app.EVMKeeper, app.AccountKeeper),
+		feemarket.NewAppModule(app.FeeMarketKeeper),
+		evmerc20.NewAppModule(app.Erc20Keeper, app.AccountKeeper),
 	)
 
 	// BasicModuleManager defines the module BasicManager is in charge of setting up basic,
@@ -777,6 +790,7 @@ func NewTacChainApp(
 	// NOTE: upgrade module is required to be prioritized
 	app.ModuleManager.SetOrderPreBlockers(
 		upgradetypes.ModuleName,
+		authtypes.ModuleName,
 	)
 
 	// During begin block slashing happens after distr.BeginBlocker so that
@@ -1265,11 +1279,6 @@ func initParamsKeeper(appCodec codec.BinaryCodec, legacyAmino *codec.LegacyAmino
 	paramsKeeper.Subspace(ibctransfertypes.ModuleName).WithKeyTable(ibctransfertypes.ParamKeyTable())
 	paramsKeeper.Subspace(icacontrollertypes.SubModuleName).WithKeyTable(icacontrollertypes.ParamKeyTable())
 	paramsKeeper.Subspace(icahosttypes.SubModuleName).WithKeyTable(icahosttypes.ParamKeyTable())
-
-	// Cosmos EVM modules
-	paramsKeeper.Subspace(evmvmtypes.ModuleName).WithKeyTable(evmvmtypes.ParamKeyTable())
-	paramsKeeper.Subspace(evmfeemarkettypes.ModuleName).WithKeyTable(evmfeemarkettypes.ParamKeyTable())
-	paramsKeeper.Subspace(evmerc20types.ModuleName)
 
 	paramsKeeper.Subspace(baseapp.Paramspace).WithKeyTable(paramstypes.ConsensusParamsKeyTable())
 

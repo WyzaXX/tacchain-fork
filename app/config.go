@@ -21,9 +21,10 @@ const (
 	// Bech32PrefixAccAddr defines the Bech32 prefix of an account's address.
 	Bech32PrefixAccAddr = "tac"
 
-	NodeDir        = ".tacchaind"
-	AppName        = "TacChainApp"
-	DefaultChainID = "tacchain_2391-1"
+	NodeDir           = ".tacchaind"
+	AppName           = "TacChainApp"
+	DefaultChainID    = "tacchain_2391-1"
+	DefaultEVMChainID = 2391
 )
 
 var (
@@ -51,14 +52,9 @@ func init() {
 
 var evmConfigSealed = false
 
-func SetupEvmConfig(chainID string) error {
+func SetupEvmConfig(chainID uint64) error {
 	if evmConfigSealed {
 		return nil
-	}
-
-	baseDenom, err := sdk.GetBaseDenom()
-	if err != nil {
-		return fmt.Errorf("failed to get base denom: %s", err)
 	}
 
 	ethCfg := evmvmtypes.DefaultChainConfig(chainID)
@@ -68,10 +64,15 @@ func SetupEvmConfig(chainID string) error {
 		0o001: eips.Enable0001,
 		0o002: eips.Enable0002,
 	}
-	err = evmvmtypes.NewEVMConfigurator().
+	err := evmvmtypes.NewEVMConfigurator().
 		WithExtendedEips(eips).
 		WithChainConfig(ethCfg).
-		WithEVMCoinInfo(baseDenom, uint8(BaseDenomUnit)).
+		WithEVMCoinInfo(evmvmtypes.EvmCoinInfo{
+			Denom:         BaseDenom,
+			ExtendedDenom: BaseDenom,
+			DisplayDenom:  DisplayDenom,
+			Decimals:      BaseDenomUnit,
+		}).
 		Configure()
 	if err != nil {
 		return fmt.Errorf("failed to setup EVMConfigurator: %s", err)

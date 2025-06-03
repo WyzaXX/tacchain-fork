@@ -24,9 +24,8 @@ import (
 	"github.com/Asphere-xyz/tacchain/app"
 
 	evmkeyring "github.com/cosmos/evm/crypto/keyring"
+	evmtestutil "github.com/cosmos/evm/evmd/testutil"
 	evmserverconfig "github.com/cosmos/evm/server/config"
-
-	evmdcmd "github.com/cosmos/evm/cmd/evmd/cmd"
 )
 
 // NewRootCmd creates a new root command for tacchaind. It is called once in the
@@ -43,7 +42,8 @@ func NewRootCmd() *cobra.Command {
 		true,
 		0,
 		simtestutil.NewAppOptionsWithFlagHome(temp),
-		evmdcmd.NoOpEvmAppOptions,
+		app.DefaultEVMChainID,
+		evmtestutil.NoOpEvmAppOptions,
 	)
 
 	encodingConfig := params.EncodingConfig{
@@ -111,7 +111,7 @@ func NewRootCmd() *cobra.Command {
 				return err
 			}
 
-			customAppTemplate, customAppConfig := initAppConfig()
+			customAppTemplate, customAppConfig := initAppConfig(app.DefaultEVMChainID)
 			customCMTConfig := initCometBFTConfig()
 
 			return server.InterceptConfigsPreRunHandler(cmd, customAppTemplate, customAppConfig, customCMTConfig)
@@ -146,7 +146,7 @@ func initCometBFTConfig() *cmtcfg.Config {
 
 // initAppConfig helps to override default appConfig template and configs.
 // return "", nil if no custom configuration is required for the application.
-func initAppConfig() (string, interface{}) {
+func initAppConfig(evmChainID uint64) (string, interface{}) {
 	// The following code snippet is just for reference.
 
 	type CustomAppConfig struct {
@@ -174,6 +174,9 @@ func initAppConfig() (string, interface{}) {
 	//
 	// In TacChain, we set the min gas prices to 0.
 	srvCfg.MinGasPrices = "0" + sdk.DefaultBondDenom
+
+	evmCfg := evmserverconfig.DefaultEVMConfig()
+	evmCfg.EVMChainID = evmChainID
 
 	// srvCfg.BaseConfig.IAVLDisableFastNode = true // disable fastnode by default
 
