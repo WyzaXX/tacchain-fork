@@ -69,3 +69,9 @@ func TacLinearInflationFormula(_ context.Context, _ minttypes.Minter, params min
 	inflation := params.InflationMax.Sub(params.InflationMax.Sub(params.InflationMin).Mul(ratio))
 	return inflation
 }
+
+// Force zero inflation
+func TacZeroInflationFormula(_ context.Context, _ minttypes.Minter, params minttypes.Params, _ math.LegacyDec) math.LegacyDec {
+	// Return zero inflation
+	return math.LegacyZeroDec()
+}

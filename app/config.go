@@ -24,7 +24,7 @@ const (
 	NodeDir           = ".tacchaind"
 	AppName           = "TacChainApp"
 	DefaultChainID    = "tacchain_2391-1"
-	DefaultEVMChainID = 2391
+	DefaultEVMChainID = uint64(2391)
 )
 
 var (

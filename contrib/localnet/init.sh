@@ -131,7 +131,7 @@ jq '
 
 # sed -i.bak "s/\"chain_id\": \"262144\"/\"chain_id\": \"$EVM_CHAIN_ID\"/g" $HOMEDIR/config/genesis.json
 # sed -i.bak "s/\"denom\": \"atest\"/\"denom\": \"utac\"/g" $HOMEDIR/config/genesis.json
-# sed -i.bak "s/\"evm_denom\": \"atest\"/\"evm_denom\": \"utac\"/g" $HOMEDIR/config/genesis.json
+sed -i.bak "s/\"evm_denom\": \"atest\"/\"evm_denom\": \"utac\"/g" $HOMEDIR/config/genesis.json
 
 # enable evm eip-3855
 sed -i.bak "s/\"extra_eips\": \[\]/\"extra_eips\": \[\"3855\"\]/g" $HOMEDIR/config/genesis.json
