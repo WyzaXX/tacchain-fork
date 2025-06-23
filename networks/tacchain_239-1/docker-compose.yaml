@@ -1,31 +1,31 @@
 services:
-  tac-spb-testnet-init:
+  tac-mainnet-init:
     user: "${USER_ID}:${GROUP_ID}"
-    image: tacchain:v0.0.11
+    image: tacchain:v1.0.0
     env_file:
-      - .env.spb
+      - .env.mainnet
     volumes:
       - "./:/data"
     entrypoint: /bin/sh
     command: >
-      -c "[ ! -e /data/config/config.toml ] && tacchaind init $MONIKER --chain-id tacchain_2391-1 --home /data && cd /data/config && rm genesis.json && wget https://raw.githubusercontent.com/TacBuild/tacchain/refs/heads/main/networks/tacchain_2391-1/genesis.json || exit 0"
+      -c "[ ! -e /data/config/config.toml ] && tacchaind init $MONIKER --chain-id tacchain_239-1 --home /data && cd /data/config && rm genesis.json && wget https://raw.githubusercontent.com/TacBuild/tacchain/refs/heads/main/networks/tacchain_239-1/genesis.json || exit 0"
 
-  tac-spb-testnet-validator-1:
+  tac-mainnet-validator-1:
     user: "${USER_ID}:${GROUP_ID}"
     network_mode: host
     restart: unless-stopped
-    image: tacchain:v0.0.11
+    image: tacchain:v1.0.0
     env_file:
-      - .env.spb
+      - .env.mainnet
     volumes:
       - "./:/data"
     depends_on:
-      tac-spb-testnet-init:
+      tac-mainnet-init:
         condition: service_completed_successfully
     entrypoint: tacchaind
     command: >
       start
-      --chain-id=tacchain_2391-1
+      --chain-id=tacchain_239-1
       --home=/data
       --db_dir=data
       --pruning=default

@@ -1,8 +1,13 @@
 #!/bin/bash -e
 
-export GENESIS_ACC_ADDRESS=tac1zg69v7ys40x77y352eufp27daufrg4nckcjrx2
+export GENESIS_ACC_1_ADDRESS=tac1zg69v7ys40x77y352eufp27daufrg4nckcjrx2
+export GENESIS_ACC_2_ADDRESS=tac167a5p268zlj2tgmlrmhkcqyex07stu5k6s23lq
 export HOMEDIR=./.test-localnet-params
 export CHAIN_ID=tacchain_239-1
+export VALIDATOR_1_MNEMONIC="spray retire festival globe nuclear festival install lunch deal bench unlock car solution vague witness weasel ankle rebel slush allow wing seek tobacco carbon" # tac1tg73cpsxxca3m2t6w09gezvcg37zrqqxglwsgv
+export VALIDATOR_2_MNEMONIC="coach deposit public fiction utility dentist course bread maple lawn dress bridge melody snake taxi suggest student vote actress shop man service bubble build" # tac137kh82tna99k9cdnvpga9jcme0tqn9up40f96g
+export VALIDATOR_3_MNEMONIC="brave name midnight glass story soda calm panel menu rescue check puzzle layer mango pull snake short spread virtual use already alone observe cream" # tac13gv56l9leqvdjj6y4cr0g8rtzudk5c65md003y
+export VALIDATOR_4_MNEMONIC="canal marble glimpse nurse afford medal film whale hockey defense mango visa romance plastic little cage balance special sibling clump machine wrestle energy acid" # tac1zh9dxqc28gx99gyeq6rfwmd623m77h00zykpvz
 
 # start new multi-validator network
 echo "Starting new multi-validator network with 4 nodes"
@@ -43,22 +48,59 @@ else
   echo "Verified 4 active validators successfully"
 fi
 
+# verify validator addresses
+echo "Verifying validator addresses"
+expected_addresses=(
+  "tac1tg73cpsxxca3m2t6w09gezvcg37zrqqxglwsgv"
+  "tac137kh82tna99k9cdnvpga9jcme0tqn9up40f96g"
+  "tac13gv56l9leqvdjj6y4cr0g8rtzudk5c65md003y"
+  "tac1zh9dxqc28gx99gyeq6rfwmd623m77h00zykpvz"
+)
+for i in $(seq 0 3); do
+  validator_addr=$(tacchaind keys show validator --home ./.test-localnet-params/node$i -a)
+  if [[ "$validator_addr" != "${expected_addresses[i]}" ]]; then
+    echo "Failed to verify validator $i address"
+    echo "Expected: ${expected_addresses[i]}"
+    echo "Got:      $validator_addr"
+    
+    killall tacchaind
+    exit 1
+  else
+    echo "Verified validator $i address successfully"
+  fi
+done
+
 # verify token distribution
 echo "Verifying token distribution"
 
-# verify genesis account balance
-echo "Verifying genesis account balance"
-expected_genesis_acc_balance="9980000000000000000000000000"
-genesis_acc_balance=$(tacchaind q bank balances $GENESIS_ACC_ADDRESS --node http://localhost:45111 --output json | jq -r '.balances[0].amount')
-if [[ "$genesis_acc_balance" != "$expected_genesis_acc_balance" ]]; then
-  echo "Failed to verify genesis account balance"
-  echo "Expected: $expected_genesis_acc_balance"
-  echo "Got:      $genesis_acc_balance"
+# verify genesis account 1 balance
+echo "Verifying genesis account 1 balance"
+expected_genesis_acc_1_balance="9979990000000000000000000000"
+genesis_acc_1_balance=$(tacchaind q bank balances $GENESIS_ACC_1_ADDRESS --node http://localhost:45111 --output json | jq -r '.balances[0].amount')
+if [[ "$genesis_acc_1_balance" != "$expected_genesis_acc_1_balance" ]]; then
+  echo "Failed to verify genesis account 1 balance"
+  echo "Expected: $expected_genesis_acc_1_balance"
+  echo "Got:      $genesis_acc_1_balance"
   
   killall tacchaind
   exit 1
 else
-  echo "Verified genesis account balance successfully"
+  echo "Verified genesis account 1 balance successfully"
+fi
+
+# verify genesis account 2 balance
+echo "Verifying genesis account 2 balance"
+expected_genesis_acc_2_balance="10000000000000000000000"
+genesis_acc_2_balance=$(tacchaind q bank balances $GENESIS_ACC_2_ADDRESS --node http://localhost:45111 --output json | jq -r '.balances[0].amount')
+if [[ "$genesis_acc_2_balance" != "$expected_genesis_acc_2_balance" ]]; then
+  echo "Failed to verify genesis account 2 balance"
+  echo "Expected: $expected_genesis_acc_2_balance"
+  echo "Got:      $genesis_acc_2_balance"
+  
+  killall tacchaind
+  exit 1
+else
+  echo "Verified genesis account 2 balance successfully"
 fi
 
 # verify validators emergency balances, self delegations and description
@@ -95,7 +137,7 @@ for i in $(seq 0 3); do
   echo "Verifying validator $i description"
   expected_description="{
   \"moniker\": \"TAC Validator $((i + 1))\",
-  \"identity\": \"TAC\",
+  \"identity\": \"4DD1A5E1D03FA12D\",
   \"website\": \"https://tac.build/\"
 }"
   description=$(tacchaind q staking validator $valoper_addr --node http://localhost:45111 --output json | jq -r '.validator .description')
@@ -258,7 +300,7 @@ fi
 
 # verify timeout commit
 echo "Verifying timeout_commit"
-expected_timeout_commit="2s"
+expected_timeout_commit="1s"
 timeout_commit=$(grep '^timeout_commit' $HOMEDIR/node0/config/config.toml | cut -d '=' -f2 | tr -d ' "')
 if [[ "$timeout_commit" != "$expected_timeout_commit" ]]; then
   echo "Failed to verify timeout_commit"
@@ -307,7 +349,7 @@ expected_gov_params='{
   "quorum": "0.334000000000000000",
   "threshold": "0.500000000000000000",
   "veto_threshold": "0.334000000000000000",
-  "min_initial_deposit_ratio": "0.000000000000000000",
+  "min_initial_deposit_ratio": "1",
   "proposal_cancel_ratio": "0.500000000000000000",
   "expedited_voting_period": "6h0m0s",
   "expedited_threshold": "0.667000000000000000",
@@ -396,6 +438,36 @@ if [[ "$denom_metadata" != "$expected_denom_metadata" ]]; then
   exit 1
 else
   echo "Verified x/bank denom metadata successfully"
+fi
+
+# verify x/staking max validators
+echo "Verifying x/staking max validators"
+expected_max_validators="14"
+max_validators=$(tacchaind q staking params --node http://localhost:45111 --output json | jq -r '.params .max_validators')
+if [[ "$max_validators" != "$expected_max_validators" ]]; then
+  echo "Failed to verify x/staking max validators"
+  echo "Expected: $expected_max_validators"
+  echo "Got:      $max_validators"
+  
+  killall tacchaind
+  exit 1
+else
+  echo "Verified x/staking max validators successfully"
+fi
+
+# verify 0 inflation
+echo "Verifying 0 inflation"
+expected_inflation="0.000000000000000000"
+inflation=$(tacchaind q mint inflation --node http://localhost:45111 --output json | jq -r '.inflation')
+if [[ "$inflation" != "$expected_inflation" ]]; then
+  echo "Failed to verify 0 inflation"
+  echo "Expected: $expected_inflation"
+  echo "Got:      $inflation"
+  
+  killall tacchaind
+  exit 1
+else
+  echo "Verified 0 inflation successfully"
 fi
 
 killall tacchaind

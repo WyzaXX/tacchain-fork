@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 
+	"github.com/spf13/cast"
 	"github.com/spf13/cobra"
 
 	"cosmossdk.io/log"
@@ -112,7 +113,15 @@ func NewRootCmd() *cobra.Command {
 			}
 
 			customAppTemplate, customAppConfig := initAppConfig()
+
+			// Init default config, this gets replaced if validator is already initialized
 			customCMTConfig := initCometBFTConfig()
+
+			// This overrides the consensus timeout commit config value read from config.toml with our custom one
+			err = os.Setenv("TACCHAIND_CONSENSUS_TIMEOUT_COMMIT", cast.ToString(app.TimeoutCommit))
+			if err != nil {
+				return err
+			}
 
 			return server.InterceptConfigsPreRunHandler(cmd, customAppTemplate, customAppConfig, customCMTConfig)
 		},
@@ -147,6 +156,9 @@ func NewRootCmd() *cobra.Command {
 // return cmtcfg.DefaultConfig if no custom configuration is required for the application.
 func initCometBFTConfig() *cmtcfg.Config {
 	cfg := cmtcfg.DefaultConfig()
+
+	// Set our custom default timeout commit
+	cfg.Consensus.TimeoutCommit = app.TimeoutCommit
 
 	// these values put a higher strain on node memory
 	// cfg.P2P.MaxNumInboundPeers = 100

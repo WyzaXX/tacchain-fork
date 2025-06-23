@@ -70,8 +70,6 @@ func TacLinearInflationFormula(_ context.Context, _ minttypes.Minter, params min
 	return inflation
 }
 
-// Force zero inflation
-func TacZeroInflationFormula(_ context.Context, _ minttypes.Minter, params minttypes.Params, _ math.LegacyDec) math.LegacyDec {
-	// Return zero inflation
+func TacZeroInflation(_ context.Context, _ minttypes.Minter, params minttypes.Params, bondedRatio math.LegacyDec) math.LegacyDec {
 	return math.LegacyZeroDec()
 }

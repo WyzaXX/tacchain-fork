@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/big"
 	"os"
+	"time"
 
 	sdkmath "cosmossdk.io/math"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -25,6 +26,9 @@ const (
 	AppName           = "TacChainApp"
 	DefaultChainID    = "tacchain_2391-1"
 	DefaultEVMChainID = uint64(2391)
+
+	// Custom timeout commit to ensure faster block times
+	TimeoutCommit = 1 * time.Second
 )
 
 var (

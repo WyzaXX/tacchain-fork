@@ -6,21 +6,24 @@ HOMEDIR=${HOMEDIR:-$HOME/.tacchaind}
 NODE_MONIKER=${NODE_MONIKER:-$(hostname)}
 CHAIN_ID=${CHAIN_ID:-tacchain_2391-1}
 KEYRING_BACKEND=${KEYRING_BACKEND:-test}
-VALIDATOR_IDENTITY=${VALIDATOR_IDENTITY:-TAC}
+VALIDATOR_IDENTITY=${VALIDATOR_IDENTITY:-4DD1A5E1D03FA12D}
 VALIDATOR_WEBSITE=${VALIDATOR_WEBSITE:-https://tac.build/}
+VALIDATOR_MNEMONIC=${VALIDATOR_MNEMONIC:-"island mail dice alien project surround orchard ball twist worth innocent arrange assume dragon rotate enough flee rapid rookie swim addict ice destroy run"} # tac15lvhklny0khnwy7hgrxsxut6t6ku2cgknw79fr
 INITIAL_BALANCE=${INITIAL_BALANCE:-2000000000000000000000}
 INITIAL_STAKE=${INITIAL_STAKE:-1000000000000000000000}
 BLOCK_TIME_SECONDS=${BLOCK_TIME_SECONDS:-2}
 MAX_GAS=${MAX_GAS:-90000000}
 MIN_GAS_PRICE=${MIN_GAS_PRICE:-25000000000}
 GOV_TIME_SECONDS=${GOV_TIME_SECONDS:-900}
-MIN_GOV_DEPOSIT=${MIN_GOV_DEPOSIT:-10000000000000000}
-MIN_EXPEDITED_GOV_DEPOSIT=${MIN_EXPEDITED_GOV_DEPOSIT:-50000000000000000}
+GOV_MIN_DEPOSIT=${GOV_MIN_DEPOSIT:-10000000000000000}
+GOV_MIN_EXPEDITED_DEPOSIT=${GOV_MIN_EXPEDITED_DEPOSIT:-50000000000000000}
+GOV_MIN_INITIAL_DEPOSIT_RATIO=${GOV_MIN_INITIAL_DEPOSIT_RATIO:-1}
 INFLATION_MAX=${INFLATION_MAX:-0.05}
-INFLATION_MIN=${INFLATION_MIN:-0}
+INFLATION_MIN=${INFLATION_MIN:-0.01}
 GOAL_BONDED=${GOAL_BONDED:-0.6}
 SLASH_DOWNTIME_PENALTY=${SLASH_DOWNTIME_PENALTY:-0.001}
 SLASH_SIGNED_BLOCKS_WINDOW=${SLASH_SIGNED_BLOCKS_WINDOW:-21600}
+MAX_VALIDATORS=${MAX_VALIDATORS:-14}
 
 # ports
 RPC_PORT=${RPC_PORT:-26657}
@@ -149,9 +152,6 @@ sed -i.bak "s/\"min_gas_price\": \"0.000000000000000000\"/\"min_gas_price\": \"$
 # set max gas
 sed -i.bak "s/\"max_gas\": \"-1\"/\"max_gas\": \"$MAX_GAS\"/g" $HOMEDIR/config/genesis.json
 
-# set block time
-sed -i.bak "s/timeout_commit = \"5s\"/timeout_commit = \"${BLOCK_TIME_SECONDS}s\"/g" $HOMEDIR/config/config.toml
-
 # update blocks per year to match our block time
 BLOCKS_PER_YEAR=$(echo "(365 * 24 * 60 * 60) / $BLOCK_TIME_SECONDS" | bc)
 sed -i.bak "s/\"blocks_per_year\": \"6311520\"/\"blocks_per_year\": \"$BLOCKS_PER_YEAR\"/g" $HOMEDIR/config/genesis.json
@@ -166,22 +166,25 @@ sed -i.bak "s/\"voting_period\": \"172800s\"/\"voting_period\": \"${GOV_TIME_SEC
 EXPEDITED_TIME_SECONDS=$((GOV_TIME_SECONDS / 2))
 sed -i.bak "s/\"expedited_voting_period\": \"86400s\"/\"expedited_voting_period\": \"${EXPEDITED_TIME_SECONDS}s\"/g" $HOMEDIR/config/genesis.json
 
+# set gov min initial deposit ratio
+sed -i.bak "s/\"min_initial_deposit_ratio\": \"0.000000000000000000\"/\"min_initial_deposit_ratio\": \"$GOV_MIN_INITIAL_DEPOSIT_RATIO\"/g" $HOMEDIR/config/genesis.json
+
 # set min gov deposit
-jq --arg MIN_GOV_DEPOSIT "$MIN_GOV_DEPOSIT" '
+jq --arg GOV_MIN_DEPOSIT "$GOV_MIN_DEPOSIT" '
   .app_state.gov.params.min_deposit = [
     {
       "denom": "utac",
-      "amount": $MIN_GOV_DEPOSIT
+      "amount": $GOV_MIN_DEPOSIT
     }
   ]
 ' $HOMEDIR/config/genesis.json > $HOMEDIR/config/genesis_patched.json && mv $HOMEDIR/config/genesis_patched.json $HOMEDIR/config/genesis.json
 
 # set min expedited gov deposit
-jq --arg MIN_EXPEDITED_GOV_DEPOSIT "$MIN_EXPEDITED_GOV_DEPOSIT" '
+jq --arg GOV_MIN_EXPEDITED_DEPOSIT "$GOV_MIN_EXPEDITED_DEPOSIT" '
   .app_state.gov.params.expedited_min_deposit = [
     {
       "denom": "utac",
-      "amount": $MIN_EXPEDITED_GOV_DEPOSIT
+      "amount": $GOV_MIN_EXPEDITED_DEPOSIT
     }
   ]
 ' $HOMEDIR/config/genesis.json > $HOMEDIR/config/genesis_patched.json && mv $HOMEDIR/config/genesis_patched.json $HOMEDIR/config/genesis.json
@@ -223,6 +226,9 @@ jq '
   ]
 ' $HOMEDIR/config/genesis.json > $HOMEDIR/config/genesis_patched.json && mv $HOMEDIR/config/genesis_patched.json $HOMEDIR/config/genesis.json
 
+# set max validators
+sed -i.bak "s/\"max_validators\": 100/\"max_validators\": $MAX_VALIDATORS/g" $HOMEDIR/config/genesis.json
+
 # set ports
 sed -i.bak "s/26657/$RPC_PORT/g" $HOMEDIR/config/config.toml
 sed -i.bak "s/26656/$P2P_PORT/g" $HOMEDIR/config/config.toml
@@ -237,7 +243,7 @@ sed -i.bak "s/6060/$PPROF_PORT/g" $HOMEDIR/config/config.toml
 sed -i.bak "s/26658/$PROXY_PORT/g" $HOMEDIR/config/config.toml
 
 # setup and add validator to genesis
-$TACCHAIND keys add validator --keyring-backend $KEYRING_BACKEND --home $HOMEDIR
+echo $VALIDATOR_MNEMONIC | $TACCHAIND keys add validator --recover --keyring-backend $KEYRING_BACKEND --home $HOMEDIR
 $TACCHAIND genesis add-genesis-account validator ${INITIAL_BALANCE}utac --keyring-backend $KEYRING_BACKEND --home $HOMEDIR
 $TACCHAIND genesis gentx validator ${INITIAL_STAKE}utac --identity $VALIDATOR_IDENTITY --website $VALIDATOR_WEBSITE --chain-id $CHAIN_ID --keyring-backend $KEYRING_BACKEND --gas-prices ${MIN_GAS_PRICE}utac --gas 200000 --home $HOMEDIR
 $TACCHAIND genesis collect-gentxs --keyring-backend $KEYRING_BACKEND --home $HOMEDIR
