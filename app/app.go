@@ -419,7 +419,7 @@ func NewTacChainApp(
 		app.BankKeeper,
 		authtypes.FeeCollectorName,
 		authAddr,
-		mintkeeper.WithMintFn(mintkeeper.DefaultMintFn(TacZeroInflationFormula)),
+		mintkeeper.WithMintFn(mintkeeper.DefaultMintFn(TacZeroInflation)),
 	)
 
 	app.DistrKeeper = distrkeeper.NewKeeper(
@@ -557,8 +557,8 @@ func NewTacChainApp(
 	// must be properly integrated to reflect these balance changes in the EVM state. Otherwise, there is a risk
 	// of desynchronization between the Cosmos SDK state and the EVM state when evidence is submitted via the EVM.
 	//
-	// For example, if your custom evidence handler deducts tokens from a user’s account, ensure that the evidence
-	// precompile also applies these deductions through the EVM’s balance tracking. Failing to do so may cause
+	// For example, if your custom evidence handler deducts tokens from a user's account, ensure that the evidence
+	// precompile also applies these deductions through the EVM's balance tracking. Failing to do so may cause
 	// inconsistencies in reported balances and break state synchronization.
 	app.EvidenceKeeper = *evidenceKeeper
 
