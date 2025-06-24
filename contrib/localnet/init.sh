@@ -132,7 +132,7 @@ if [[ -z $EVM_CHAIN_ID ]]; then
     exit 1
 fi
 
-# jq --arg CHAIN_ID "$EVM_CHAIN_ID" '.app_state.evm.chain_id = $CHAIN_ID' $HOMEDIR/config/genesis.json > $HOMEDIR/config/genesis_patched.json && mv $HOMEDIR/config/genesis_patched.json $HOMEDIR/config/genesis.json
+jq --arg CHAIN_ID "$EVM_CHAIN_ID" '.app_state.evm.chain_id = $CHAIN_ID' $HOMEDIR/config/genesis.json > $HOMEDIR/config/genesis_patched.json && mv $HOMEDIR/config/genesis_patched.json $HOMEDIR/config/genesis.json
 
 # sed -i.bak "s/\"chain_id\": \"262144\"/\"chain_id\": \"$EVM_CHAIN_ID\"/g" $HOMEDIR/config/genesis.json
 # sed -i.bak "s/\"denom\": \"atest\"/\"denom\": \"utac\"/g" $HOMEDIR/config/genesis.json
