@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 
+	"github.com/Asphere-xyz/tacchain/app"
 	"github.com/spf13/cobra"
 
 	//nolint:revive // dot imports are fine for Ginkgo
@@ -60,7 +61,7 @@ var _ = Describe("Ledger CLI and keyring functionality: ", func() {
 	Describe("Adding a key from ledger using the CLI", func() {
 		BeforeEach(func() {
 			krHome = s.T().TempDir()
-			encCfg = evmencoding.MakeConfig()
+			encCfg = evmencoding.MakeConfig(app.DefaultEVMChainID)
 
 			cmd = s.cosmosEVMAddKeyCmd()
 
@@ -109,7 +110,7 @@ var _ = Describe("Ledger CLI and keyring functionality: ", func() {
 	Describe("Singing a transactions", func() {
 		BeforeEach(func() {
 			krHome = s.T().TempDir()
-			encCfg = evmencoding.MakeConfig()
+			encCfg = evmencoding.MakeConfig(app.DefaultEVMChainID)
 
 			var err error
 

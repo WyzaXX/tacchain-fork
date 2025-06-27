@@ -15,29 +15,34 @@ import (
 	abci "github.com/cometbft/cometbft/abci/types"
 	dbm "github.com/cosmos/cosmos-db"
 	"github.com/cosmos/gogoproto/proto"
-	"github.com/cosmos/ibc-go/modules/capability"
-	capabilitykeeper "github.com/cosmos/ibc-go/modules/capability/keeper"
-	capabilitytypes "github.com/cosmos/ibc-go/modules/capability/types"
-	ica "github.com/cosmos/ibc-go/v8/modules/apps/27-interchain-accounts"
-	icacontroller "github.com/cosmos/ibc-go/v8/modules/apps/27-interchain-accounts/controller"
-	icacontrollerkeeper "github.com/cosmos/ibc-go/v8/modules/apps/27-interchain-accounts/controller/keeper"
-	icacontrollertypes "github.com/cosmos/ibc-go/v8/modules/apps/27-interchain-accounts/controller/types"
-	icahost "github.com/cosmos/ibc-go/v8/modules/apps/27-interchain-accounts/host"
-	icahostkeeper "github.com/cosmos/ibc-go/v8/modules/apps/27-interchain-accounts/host/keeper"
-	icahosttypes "github.com/cosmos/ibc-go/v8/modules/apps/27-interchain-accounts/host/types"
-	icatypes "github.com/cosmos/ibc-go/v8/modules/apps/27-interchain-accounts/types"
-	ibcfee "github.com/cosmos/ibc-go/v8/modules/apps/29-fee"
-	ibcfeekeeper "github.com/cosmos/ibc-go/v8/modules/apps/29-fee/keeper"
-	ibcfeetypes "github.com/cosmos/ibc-go/v8/modules/apps/29-fee/types"
-	ibctransfer "github.com/cosmos/ibc-go/v8/modules/apps/transfer"
-	ibctransfertypes "github.com/cosmos/ibc-go/v8/modules/apps/transfer/types"
-	ibc "github.com/cosmos/ibc-go/v8/modules/core"
-	ibcclienttypes "github.com/cosmos/ibc-go/v8/modules/core/02-client/types"
-	ibcconnectiontypes "github.com/cosmos/ibc-go/v8/modules/core/03-connection/types"
-	porttypes "github.com/cosmos/ibc-go/v8/modules/core/05-port/types"
-	ibcexported "github.com/cosmos/ibc-go/v8/modules/core/exported"
-	ibckeeper "github.com/cosmos/ibc-go/v8/modules/core/keeper"
-	ibctm "github.com/cosmos/ibc-go/v8/modules/light-clients/07-tendermint"
+
+	// "github.com/cosmos/ibc-go/modules/capability"
+	// capabilitykeeper "github.com/cosmos/ibc-go/modules/capability/keeper"
+	// capabilitytypes "github.com/cosmos/ibc-go/modules/capability/types"
+	ica "github.com/cosmos/ibc-go/v10/modules/apps/27-interchain-accounts"
+	icacontroller "github.com/cosmos/ibc-go/v10/modules/apps/27-interchain-accounts/controller"
+	icacontrollerkeeper "github.com/cosmos/ibc-go/v10/modules/apps/27-interchain-accounts/controller/keeper"
+	icacontrollertypes "github.com/cosmos/ibc-go/v10/modules/apps/27-interchain-accounts/controller/types"
+	icahost "github.com/cosmos/ibc-go/v10/modules/apps/27-interchain-accounts/host"
+	icahostkeeper "github.com/cosmos/ibc-go/v10/modules/apps/27-interchain-accounts/host/keeper"
+	icahosttypes "github.com/cosmos/ibc-go/v10/modules/apps/27-interchain-accounts/host/types"
+	icatypes "github.com/cosmos/ibc-go/v10/modules/apps/27-interchain-accounts/types"
+
+	// ibcfee "github.com/cosmos/ibc-go/v10/modules/apps/29-fee"
+	// ibcfeekeeper "github.com/cosmos/ibc-go/v10/modules/apps/29-fee/keeper"
+	// ibcfeetypes "github.com/cosmos/ibc-go/v10/modules/apps/29-fee/types"
+	ibctransferv2 "github.com/cosmos/evm/x/ibc/transfer/v2"
+	ibctransfer "github.com/cosmos/ibc-go/v10/modules/apps/transfer"
+	ibctransfertypes "github.com/cosmos/ibc-go/v10/modules/apps/transfer/types"
+	ibc "github.com/cosmos/ibc-go/v10/modules/core"
+	ibcclienttypes "github.com/cosmos/ibc-go/v10/modules/core/02-client/types"
+	ibcconnectiontypes "github.com/cosmos/ibc-go/v10/modules/core/03-connection/types"
+	porttypes "github.com/cosmos/ibc-go/v10/modules/core/05-port/types"
+	ibcapi "github.com/cosmos/ibc-go/v10/modules/core/api"
+	ibcexported "github.com/cosmos/ibc-go/v10/modules/core/exported"
+
+	ibckeeper "github.com/cosmos/ibc-go/v10/modules/core/keeper"
+	ibctm "github.com/cosmos/ibc-go/v10/modules/light-clients/07-tendermint"
 	"github.com/spf13/cast"
 
 	autocliv1 "cosmossdk.io/api/cosmos/autocli/v1"
@@ -139,16 +144,17 @@ import (
 	evmerc20 "github.com/cosmos/evm/x/erc20"
 	evmerc20keeper "github.com/cosmos/evm/x/erc20/keeper"
 	evmerc20types "github.com/cosmos/evm/x/erc20/types"
+	evmerc20v2 "github.com/cosmos/evm/x/erc20/v2"
+
 	"github.com/cosmos/evm/x/feemarket"
 	evmfeemarketkeeper "github.com/cosmos/evm/x/feemarket/keeper"
 	evmfeemarkettypes "github.com/cosmos/evm/x/feemarket/types"
 	"github.com/cosmos/evm/x/vm"
 	evmcorevm "github.com/ethereum/go-ethereum/core/vm"
 
-	// NOTE: override ICS20 keeper to support IBC transfers of ERC20 tokens
 	evmcosmosante "github.com/cosmos/evm/ante/evm"
 	evmcosmostypes "github.com/cosmos/evm/types"
-	evmibctransfer "github.com/cosmos/evm/x/ibc/transfer"
+	evmibctransfer "github.com/cosmos/evm/x/ibc/transfer" // NOTE: override ICS20 keeper to support IBC transfers of ERC20 tokens
 	evmibctransferkeeper "github.com/cosmos/evm/x/ibc/transfer/keeper"
 	evmvmkeeper "github.com/cosmos/evm/x/vm/keeper"
 	evmvmtypes "github.com/cosmos/evm/x/vm/types"
@@ -165,8 +171,8 @@ var maccPerms = map[string][]string{
 	nft.ModuleName:                 nil,
 	// non sdk modules
 	ibctransfertypes.ModuleName: {authtypes.Minter, authtypes.Burner},
-	ibcfeetypes.ModuleName:      nil,
-	icatypes.ModuleName:         nil,
+	// ibcfeetypes.ModuleName:      nil,
+	icatypes.ModuleName: nil,
 	// Cosmos EVM modules
 	evmvmtypes.ModuleName:        {authtypes.Minter, authtypes.Burner},
 	evmfeemarkettypes.ModuleName: nil,
@@ -187,14 +193,14 @@ type TacChainApp struct {
 	interfaceRegistry types.InterfaceRegistry
 
 	// keys to access the substores
-	keys    map[string]*storetypes.KVStoreKey
-	tkeys   map[string]*storetypes.TransientStoreKey
-	memKeys map[string]*storetypes.MemoryStoreKey
+	keys  map[string]*storetypes.KVStoreKey
+	tkeys map[string]*storetypes.TransientStoreKey
+	// memKeys map[string]*storetypes.MemoryStoreKey
 
 	// keepers
-	AccountKeeper         authkeeper.AccountKeeper
-	BankKeeper            bankkeeper.BaseKeeper
-	CapabilityKeeper      *capabilitykeeper.Keeper
+	AccountKeeper authkeeper.AccountKeeper
+	BankKeeper    bankkeeper.BaseKeeper
+	// CapabilityKeeper      *capabilitykeeper.Keeper
 	StakingKeeper         *stakingkeeper.Keeper
 	SlashingKeeper        slashingkeeper.Keeper
 	MintKeeper            mintkeeper.Keeper
@@ -211,17 +217,17 @@ type TacChainApp struct {
 	ConsensusParamsKeeper consensusparamkeeper.Keeper
 	CircuitKeeper         circuitkeeper.Keeper
 
-	IBCKeeper           *ibckeeper.Keeper // IBC Keeper must be a pointer in the app, so we can SetRouter on it correctly
-	IBCFeeKeeper        ibcfeekeeper.Keeper
+	IBCKeeper *ibckeeper.Keeper // IBC Keeper must be a pointer in the app, so we can SetRouter on it correctly
+	// IBCFeeKeeper        ibcfeekeeper.Keeper
 	ICAControllerKeeper icacontrollerkeeper.Keeper
 	ICAHostKeeper       icahostkeeper.Keeper
-	TransferKeeper      evmibctransferkeeper.Keeper
+	IBCTransferKeeper   evmibctransferkeeper.Keeper
 
-	ScopedIBCKeeper           capabilitykeeper.ScopedKeeper
-	ScopedICAHostKeeper       capabilitykeeper.ScopedKeeper
-	ScopedICAControllerKeeper capabilitykeeper.ScopedKeeper
-	ScopedTransferKeeper      capabilitykeeper.ScopedKeeper
-	ScopedIBCFeeKeeper        capabilitykeeper.ScopedKeeper
+	// ScopedIBCKeeper           capabilitykeeper.ScopedKeeper
+	// ScopedICAHostKeeper       capabilitykeeper.ScopedKeeper
+	// ScopedICAControllerKeeper capabilitykeeper.ScopedKeeper
+	// ScopedTransferKeeper      capabilitykeeper.ScopedKeeper
+	// ScopedIBCFeeKeeper        capabilitykeeper.ScopedKeeper
 
 	// the module manager
 	ModuleManager      *module.Manager
@@ -247,10 +253,11 @@ func NewTacChainApp(
 	loadLatest bool,
 	invCheckPeriod uint,
 	appOpts servertypes.AppOptions,
+	evmChainID uint64,
 	evmAppOptions evmd.EVMOptionsFn,
 	baseAppOptions ...func(*baseapp.BaseApp),
 ) *TacChainApp {
-	encodingConfig := evmencoding.MakeConfig()
+	encodingConfig := evmencoding.MakeConfig(evmChainID)
 
 	// Below we could construct and set an application specific mempool and
 	// ABCI 1.0 PrepareProposal and ProcessProposal handlers. These defaults are
@@ -287,7 +294,7 @@ func NewTacChainApp(
 	bApp.SetTxEncoder(encodingConfig.TxConfig.TxEncoder())
 
 	// initialize the Cosmos EVM application configuration
-	if err := evmAppOptions(bApp.ChainID()); err != nil {
+	if err := evmAppOptions(evmChainID); err != nil {
 		panic(err)
 	}
 
@@ -298,14 +305,16 @@ func NewTacChainApp(
 		evidencetypes.StoreKey, circuittypes.StoreKey,
 		authzkeeper.StoreKey, nftkeeper.StoreKey, group.StoreKey,
 		// non sdk store keys
-		capabilitytypes.StoreKey, ibcexported.StoreKey, ibctransfertypes.StoreKey, ibcfeetypes.StoreKey,
+		// capabilitytypes.StoreKey,
+		ibcexported.StoreKey, ibctransfertypes.StoreKey,
+		// ibcfeetypes.StoreKey,
 		icahosttypes.StoreKey, icacontrollertypes.StoreKey,
 		// Cosmos EVM store keys
 		evmvmtypes.StoreKey, evmfeemarkettypes.StoreKey, evmerc20types.StoreKey,
 	)
 
 	tkeys := storetypes.NewTransientStoreKeys(paramstypes.TStoreKey, evmvmtypes.TransientKey, evmfeemarkettypes.TransientKey)
-	memKeys := storetypes.NewMemoryStoreKeys(capabilitytypes.MemStoreKey)
+	// memKeys := storetypes.NewMemoryStoreKeys(capabilitytypes.MemStoreKey)
 
 	// register streaming services
 	if err := bApp.RegisterStreamingServices(appOpts, keys); err != nil {
@@ -320,7 +329,7 @@ func NewTacChainApp(
 		interfaceRegistry: encodingConfig.InterfaceRegistry,
 		keys:              keys,
 		tkeys:             tkeys,
-		memKeys:           memKeys,
+		// memKeys:           memKeys,
 	}
 
 	app.ParamsKeeper = initParamsKeeper(
@@ -343,20 +352,20 @@ func NewTacChainApp(
 	bApp.SetParamStore(app.ConsensusParamsKeeper.ParamsStore)
 
 	// add capability keeper and ScopeToModule for ibc module
-	app.CapabilityKeeper = capabilitykeeper.NewKeeper(
-		encodingConfig.Codec,
-		keys[capabilitytypes.StoreKey],
-		memKeys[capabilitytypes.MemStoreKey],
-	)
+	// app.CapabilityKeeper = capabilitykeeper.NewKeeper(
+	// 	encodingConfig.Codec,
+	// 	keys[capabilitytypes.StoreKey],
+	// 	memKeys[capabilitytypes.MemStoreKey],
+	// )
 
-	app.ScopedIBCKeeper = app.CapabilityKeeper.ScopeToModule(ibcexported.ModuleName)
-	app.ScopedICAHostKeeper = app.CapabilityKeeper.ScopeToModule(icahosttypes.SubModuleName)
-	app.ScopedICAControllerKeeper = app.CapabilityKeeper.ScopeToModule(icacontrollertypes.SubModuleName)
-	app.ScopedTransferKeeper = app.CapabilityKeeper.ScopeToModule(ibctransfertypes.ModuleName)
+	// app.ScopedIBCKeeper = app.CapabilityKeeper.ScopeToModule(ibcexported.ModuleName)
+	// app.ScopedICAHostKeeper = app.CapabilityKeeper.ScopeToModule(icahosttypes.SubModuleName)
+	// app.ScopedICAControllerKeeper = app.CapabilityKeeper.ScopeToModule(icacontrollertypes.SubModuleName)
+	// app.ScopedTransferKeeper = app.CapabilityKeeper.ScopeToModule(ibctransfertypes.ModuleName)
 
 	// Applications that wish to enforce statically created ScopedKeepers should call `Seal` after creating
 	// their scoped modules in `NewApp` with `ScopeToModule`
-	app.CapabilityKeeper.Seal()
+	// app.CapabilityKeeper.Seal()
 
 	// add keepers
 	app.AccountKeeper = authkeeper.NewAccountKeeper(
@@ -410,6 +419,7 @@ func NewTacChainApp(
 		app.BankKeeper,
 		authtypes.FeeCollectorName,
 		authAddr,
+		mintkeeper.WithMintFn(mintkeeper.DefaultMintFn(TacZeroInflation)),
 	)
 
 	app.DistrKeeper = distrkeeper.NewKeeper(
@@ -495,11 +505,9 @@ func NewTacChainApp(
 
 	app.IBCKeeper = ibckeeper.NewKeeper(
 		encodingConfig.Codec,
-		keys[ibcexported.StoreKey],
+		runtime.NewKVStoreService(keys[ibcexported.StoreKey]),
 		app.GetSubspace(ibcexported.ModuleName),
-		app.StakingKeeper,
 		app.UpgradeKeeper,
-		app.ScopedIBCKeeper,
 		authAddr,
 	)
 
@@ -543,6 +551,15 @@ func NewTacChainApp(
 		runtime.ProvideCometInfoService(),
 	)
 	// If evidence needs to be handled for the app, set routes in router here and seal
+	// Note: The evidence precompile allows evidence to be submitted through an EVM transaction.
+	// If you implement a custom evidence handler in the router that changes token balances (e.g. penalizing
+	// addresses, deducting fees, etc.), be aware that the precompile logic (e.g. SetBalanceChangeEntries)
+	// must be properly integrated to reflect these balance changes in the EVM state. Otherwise, there is a risk
+	// of desynchronization between the Cosmos SDK state and the EVM state when evidence is submitted via the EVM.
+	//
+	// For example, if your custom evidence handler deducts tokens from a user's account, ensure that the evidence
+	// precompile also applies these deductions through the EVM's balance tracking. Failing to do so may cause
+	// inconsistencies in reported balances and break state synchronization.
 	app.EvidenceKeeper = *evidenceKeeper
 
 	// Cosmos EVM keepers
@@ -550,7 +567,6 @@ func NewTacChainApp(
 		encodingConfig.Codec, authtypes.NewModuleAddress(govtypes.ModuleName),
 		keys[evmfeemarkettypes.StoreKey],
 		tkeys[evmfeemarkettypes.TransientKey],
-		app.GetSubspace(evmfeemarkettypes.ModuleName),
 	)
 
 	// Set up EVM keeper
@@ -568,7 +584,7 @@ func NewTacChainApp(
 		app.StakingKeeper,
 		app.FeeMarketKeeper,
 		&app.Erc20Keeper,
-		tracer, app.GetSubspace(evmvmtypes.ModuleName),
+		tracer,
 	)
 
 	app.Erc20Keeper = evmerc20keeper.NewKeeper(
@@ -579,53 +595,55 @@ func NewTacChainApp(
 		app.BankKeeper,
 		app.EVMKeeper,
 		app.StakingKeeper,
-		app.AuthzKeeper,
-		&app.TransferKeeper,
+		&app.IBCTransferKeeper,
 	)
 
 	// instantiate IBC transfer keeper AFTER the ERC-20 keeper to use it in the instantiation
-	app.TransferKeeper = evmibctransferkeeper.NewKeeper(
+	app.IBCTransferKeeper = evmibctransferkeeper.NewKeeper(
 		encodingConfig.Codec,
-		keys[ibctransfertypes.StoreKey],
+		runtime.NewKVStoreService(keys[ibctransfertypes.StoreKey]),
 		app.GetSubspace(ibctransfertypes.ModuleName),
-		nil, // we are passing no ics4 wrapper
-		app.IBCKeeper.ChannelKeeper, app.IBCKeeper.PortKeeper,
-		app.AccountKeeper, app.BankKeeper, app.ScopedTransferKeeper,
+		app.IBCKeeper.ChannelKeeper,
+		app.IBCKeeper.ChannelKeeper,
+		app.MsgServiceRouter(),
+		app.AccountKeeper,
+		app.BankKeeper,
 		app.Erc20Keeper, // Add ERC20 Keeper for ERC20 transfers
 		authAddr,
 	)
 
 	// IBC Fee Module keeper
-	app.IBCFeeKeeper = ibcfeekeeper.NewKeeper(
-		encodingConfig.Codec, keys[ibcfeetypes.StoreKey],
-		app.IBCKeeper.ChannelKeeper, // may be replaced with IBC middleware
-		app.IBCKeeper.ChannelKeeper,
-		app.IBCKeeper.PortKeeper, app.AccountKeeper, app.BankKeeper,
-	)
+	// app.IBCFeeKeeper = ibcfeekeeper.NewKeeper(
+	// 	encodingConfig.Codec, keys[ibcfeetypes.StoreKey],
+	// 	app.IBCKeeper.ChannelKeeper, // may be replaced with IBC middleware
+	// 	app.IBCKeeper.ChannelKeeper,
+	// 	app.IBCKeeper.PortKeeper, app.AccountKeeper, app.BankKeeper,
+	// )
 
 	app.ICAHostKeeper = icahostkeeper.NewKeeper(
 		encodingConfig.Codec,
-		keys[icahosttypes.StoreKey],
+		runtime.NewKVStoreService(keys[icahosttypes.StoreKey]),
 		app.GetSubspace(icahosttypes.SubModuleName),
-		app.IBCFeeKeeper, // use ics29 fee as ics4Wrapper in middleware stack
+		// app.IBCFeeKeeper, // use ics29 fee as ics4Wrapper in middleware stack
 		app.IBCKeeper.ChannelKeeper,
-		app.IBCKeeper.PortKeeper,
+		app.IBCKeeper.ChannelKeeper,
 		app.AccountKeeper,
-		app.ScopedICAHostKeeper,
+		// app.ScopedICAHostKeeper,
 		app.MsgServiceRouter(),
+		app.GRPCQueryRouter(),
 		authAddr,
 	)
 	// set grpc router for ica host
-	app.ICAHostKeeper.WithQueryRouter(app.GRPCQueryRouter())
+	// app.ICAHostKeeper.WithQueryRouter(app.GRPCQueryRouter())
 
 	app.ICAControllerKeeper = icacontrollerkeeper.NewKeeper(
 		encodingConfig.Codec,
-		keys[icacontrollertypes.StoreKey],
+		runtime.NewKVStoreService(keys[icacontrollertypes.StoreKey]),
 		app.GetSubspace(icacontrollertypes.SubModuleName),
-		app.IBCFeeKeeper, // use ics29 fee as ics4Wrapper in middleware stack
+		// app.IBCFeeKeeper, // use ics29 fee as ics4Wrapper in middleware stack
 		app.IBCKeeper.ChannelKeeper,
-		app.IBCKeeper.PortKeeper,
-		app.ScopedICAControllerKeeper,
+		app.IBCKeeper.ChannelKeeper,
+		// app.ScopedICAControllerKeeper,
 		app.MsgServiceRouter(),
 		authAddr,
 	)
@@ -633,34 +651,58 @@ func NewTacChainApp(
 	// Create Interchain Accounts Stack
 	// SendPacket, since it is originating from the application to core IBC:
 	// icaAuthModuleKeeper.SendTx -> icaController.SendPacket -> fee.SendPacket -> channel.SendPacket
-	var icaControllerStack porttypes.IBCModule
+	// var icaControllerStack porttypes.IBCModule
 	// integration point for custom authentication modules
 	// see https://medium.com/the-interchain-foundation/ibc-go-v6-changes-to-interchain-accounts-and-how-it-impacts-your-chain-806c185300d7
-	var noAuthzModule porttypes.IBCModule
-	icaControllerStack = icacontroller.NewIBCMiddleware(noAuthzModule, app.ICAControllerKeeper)
-	icaControllerStack = icacontroller.NewIBCMiddleware(icaControllerStack, app.ICAControllerKeeper)
-	icaICS4Wrapper := icaControllerStack.(porttypes.ICS4Wrapper)
-	icaControllerStack = ibcfee.NewIBCMiddleware(icaControllerStack, app.IBCFeeKeeper)
+	// var noAuthzModule porttypes.IBCModule
+	// icaControllerStack = icacontroller.NewIBCMiddleware(noAuthzModule, app.ICAControllerKeeper)
+	// icaControllerStack = icacontroller.NewIBCMiddleware(icaControllerStack, app.ICAControllerKeeper)
+	// icaICS4Wrapper := icaControllerStack.(porttypes.ICS4Wrapper)
+	// icaControllerStack = ibcfee.NewIBCMiddleware(icaControllerStack, app.IBCFeeKeeper)
 	// Since the callbacks middleware itself is an ics4wrapper, it needs to be passed to the ica controller keeper
-	app.ICAControllerKeeper.WithICS4Wrapper(icaICS4Wrapper)
+	// app.ICAControllerKeeper.WithICS4Wrapper(icaICS4Wrapper)
+
+	// Create Interchain Accounts Stack
+	// SendPacket, since it is originating from the application to core IBC:
+	// icaControllerKeeper.SendTx -> channel.SendPacket
+	icaControllerStack := icacontroller.NewIBCMiddleware(app.ICAControllerKeeper)
 
 	// RecvPacket, message that originates from core IBC and goes down to app, the flow is:
 	// channel.RecvPacket -> fee.OnRecvPacket -> icaHost.OnRecvPacket
-	var icaHostStack porttypes.IBCModule
-	icaHostStack = icahost.NewIBCModule(app.ICAHostKeeper)
-	icaHostStack = ibcfee.NewIBCMiddleware(icaHostStack, app.IBCFeeKeeper)
+	// var icaHostStack porttypes.IBCModule
+	// icaHostStack = icahost.NewIBCModule(app.ICAHostKeeper)
+	// icaHostStack = ibcfee.NewIBCMiddleware(icaHostStack, app.IBCFeeKeeper)
+
+	// RecvPacket, message that originates from core IBC and goes down to app, the flow is:
+	// channel.RecvPacket -> icaHost.OnRecvPacket
+	icaHostStack := icahost.NewIBCModule(app.ICAHostKeeper)
 
 	// Create Transfer Stack
-	var transferStack porttypes.IBCModule
-	transferStack = evmibctransfer.NewIBCModule(app.TransferKeeper)
-	transferStack = evmerc20.NewIBCMiddleware(app.Erc20Keeper, transferStack)
+	var ibcTransferStack porttypes.IBCModule
+	ibcTransferStack = evmibctransfer.NewIBCModule(app.IBCTransferKeeper)
+	ibcTransferStack = evmerc20.NewIBCMiddleware(app.Erc20Keeper, ibcTransferStack)
+
+	var ibcv2TransferStack ibcapi.IBCModule
+	ibcv2TransferStack = ibctransferv2.NewIBCModule(app.IBCTransferKeeper)
+	ibcv2TransferStack = evmerc20v2.NewIBCMiddleware(ibcv2TransferStack, app.Erc20Keeper)
 
 	// Create static IBC router, add app routes, then set and seal it
 	ibcRouter := porttypes.NewRouter().
-		AddRoute(ibctransfertypes.ModuleName, transferStack).
+		AddRoute(ibctransfertypes.ModuleName, ibcTransferStack).
 		AddRoute(icacontrollertypes.SubModuleName, icaControllerStack).
 		AddRoute(icahosttypes.SubModuleName, icaHostStack)
+
+	ibcv2Router := ibcapi.NewRouter().
+		AddRoute(ibctransfertypes.ModuleName, ibcv2TransferStack)
+
 	app.IBCKeeper.SetRouter(ibcRouter)
+	app.IBCKeeper.SetRouterV2(ibcv2Router)
+
+	// Light client modules
+	clientKeeper := app.IBCKeeper.ClientKeeper
+	storeProvider := app.IBCKeeper.ClientKeeper.GetStoreProvider()
+	tmLightClientModule := ibctm.NewLightClientModule(encodingConfig.Codec, storeProvider)
+	clientKeeper.AddRoute(ibctm.ModuleName, &tmLightClientModule)
 
 	// NOTE: we are adding all available Cosmos EVM EVM extensions.
 	// Not all of them need to be enabled, which can be configured on a per-chain basis.
@@ -670,13 +712,13 @@ func NewTacChainApp(
 			app.DistrKeeper,
 			app.BankKeeper,
 			app.Erc20Keeper,
-			app.AuthzKeeper,
-			app.TransferKeeper,
+			app.IBCTransferKeeper,
 			app.IBCKeeper.ChannelKeeper,
 			app.EVMKeeper,
 			app.GovKeeper,
 			app.SlashingKeeper,
 			app.EvidenceKeeper,
+			app.AppCodec(),
 		),
 	)
 
@@ -700,7 +742,7 @@ func NewTacChainApp(
 		bank.NewAppModule(encodingConfig.Codec, app.BankKeeper, app.AccountKeeper, app.GetSubspace(banktypes.ModuleName)),
 		feegrantmodule.NewAppModule(encodingConfig.Codec, app.AccountKeeper, app.BankKeeper, app.FeeGrantKeeper, app.interfaceRegistry),
 		gov.NewAppModule(encodingConfig.Codec, &app.GovKeeper, app.AccountKeeper, app.BankKeeper, app.GetSubspace(govtypes.ModuleName)),
-		mint.NewAppModule(encodingConfig.Codec, app.MintKeeper, app.AccountKeeper, TacZeroInflation, app.GetSubspace(minttypes.ModuleName)),
+		mint.NewAppModule(encodingConfig.Codec, app.MintKeeper, app.AccountKeeper, nil, app.GetSubspace(minttypes.ModuleName)),
 		slashing.NewAppModule(encodingConfig.Codec, app.SlashingKeeper, app.AccountKeeper, app.BankKeeper, app.StakingKeeper, app.GetSubspace(slashingtypes.ModuleName), app.interfaceRegistry),
 		distr.NewAppModule(encodingConfig.Codec, app.DistrKeeper, app.AccountKeeper, app.BankKeeper, app.StakingKeeper, app.GetSubspace(distrtypes.ModuleName)),
 		staking.NewAppModule(encodingConfig.Codec, app.StakingKeeper, app.AccountKeeper, app.BankKeeper, app.GetSubspace(stakingtypes.ModuleName)),
@@ -713,18 +755,18 @@ func NewTacChainApp(
 		consensus.NewAppModule(encodingConfig.Codec, app.ConsensusParamsKeeper),
 		circuit.NewAppModule(encodingConfig.Codec, app.CircuitKeeper),
 		// non sdk modules
-		capability.NewAppModule(encodingConfig.Codec, *app.CapabilityKeeper, false),
+		// capability.NewAppModule(encodingConfig.Codec, *app.CapabilityKeeper, false),
 		ibc.NewAppModule(app.IBCKeeper),
-		evmibctransfer.NewAppModule(app.TransferKeeper),
-		ibcfee.NewAppModule(app.IBCFeeKeeper),
+		evmibctransfer.NewAppModule(app.IBCTransferKeeper),
+		// ibcfee.NewAppModule(app.IBCFeeKeeper),
 		ica.NewAppModule(&app.ICAControllerKeeper, &app.ICAHostKeeper),
-		ibctm.AppModule{},
+		ibctm.NewAppModule(tmLightClientModule),
 		// sdk
 		crisis.NewAppModule(app.CrisisKeeper, skipGenesisInvariants, app.GetSubspace(crisistypes.ModuleName)), // always be last to make sure that it checks for all invariants and not only part of them
 		// Cosmos EVM modules
-		vm.NewAppModule(app.EVMKeeper, app.AccountKeeper, app.GetSubspace(evmvmtypes.ModuleName)),
-		feemarket.NewAppModule(app.FeeMarketKeeper, app.GetSubspace(evmfeemarkettypes.ModuleName)),
-		evmerc20.NewAppModule(app.Erc20Keeper, app.AccountKeeper, app.GetSubspace(evmerc20types.ModuleName)),
+		vm.NewAppModule(app.EVMKeeper, app.AccountKeeper),
+		feemarket.NewAppModule(app.FeeMarketKeeper),
+		evmerc20.NewAppModule(app.Erc20Keeper, app.AccountKeeper),
 	)
 
 	// BasicModuleManager defines the module BasicManager is in charge of setting up basic,
@@ -749,6 +791,7 @@ func NewTacChainApp(
 	// NOTE: upgrade module is required to be prioritized
 	app.ModuleManager.SetOrderPreBlockers(
 		upgradetypes.ModuleName,
+		authtypes.ModuleName,
 	)
 
 	// During begin block slashing happens after distr.BeginBlocker so that
@@ -757,7 +800,7 @@ func NewTacChainApp(
 	// NOTE: staking module is required if HistoricalEntries param > 0
 	// NOTE: capability module's beginblocker must come before any modules using capabilities (e.g. IBC)
 	app.ModuleManager.SetOrderBeginBlockers(
-		capabilitytypes.ModuleName,
+		// capabilitytypes.ModuleName,
 		distrtypes.ModuleName,
 		stakingtypes.ModuleName,
 		slashingtypes.ModuleName,
@@ -778,7 +821,7 @@ func NewTacChainApp(
 		govtypes.ModuleName,
 		genutiltypes.ModuleName,
 		icatypes.ModuleName,
-		ibcfeetypes.ModuleName,
+		// ibcfeetypes.ModuleName,
 		feegrant.ModuleName,
 		paramstypes.ModuleName,
 		upgradetypes.ModuleName,
@@ -803,8 +846,8 @@ func NewTacChainApp(
 		ibctransfertypes.ModuleName,
 		ibcexported.ModuleName,
 		icatypes.ModuleName,
-		ibcfeetypes.ModuleName,
-		capabilitytypes.ModuleName,
+		// ibcfeetypes.ModuleName,
+		// capabilitytypes.ModuleName,
 		authtypes.ModuleName,
 		banktypes.ModuleName,
 		distrtypes.ModuleName,
@@ -822,11 +865,8 @@ func NewTacChainApp(
 	// NOTE: The genutils module must occur after staking so that pools are
 	// properly initialized with tokens from genesis accounts.
 	// NOTE: The genutils module must also occur after auth so that it can access the params from auth.
-	// NOTE: Capability module must occur first so that it can initialize any capabilities
-	// so that other modules that want to create or claim capabilities afterwards in InitChain
-	// can do so safely.
 	genesisModuleOrder := []string{
-		capabilitytypes.ModuleName,
+		// capabilitytypes.ModuleName,
 		// simd modules
 		authtypes.ModuleName,
 		banktypes.ModuleName,
@@ -839,7 +879,7 @@ func NewTacChainApp(
 		// additional non simd modules
 		ibcexported.ModuleName,
 		icatypes.ModuleName,
-		ibcfeetypes.ModuleName,
+		// ibcfeetypes.ModuleName,
 
 		// Cosmos EVM modules
 		//
@@ -906,7 +946,7 @@ func NewTacChainApp(
 	// initialize stores
 	app.MountKVStores(keys)
 	app.MountTransientStores(tkeys)
-	app.MountMemoryStores(memKeys)
+	// app.MountMemoryStores(memKeys)
 
 	// initialize BaseApp
 	app.SetInitChainer(app.InitChainer)
@@ -1126,9 +1166,9 @@ func (app *TacChainApp) GetTKey(storeKey string) *storetypes.TransientStoreKey {
 // GetMemKey returns the MemStoreKey for the provided mem key.
 //
 // NOTE: This is solely used for testing purposes.
-func (app *TacChainApp) GetMemKey(storeKey string) *storetypes.MemoryStoreKey {
-	return app.memKeys[storeKey]
-}
+// func (app *TacChainApp) GetMemKey(storeKey string) *storetypes.MemoryStoreKey {
+// 	return app.memKeys[storeKey]
+// }
 
 // GetSubspace returns a param subspace for a given module name.
 //
@@ -1240,11 +1280,6 @@ func initParamsKeeper(appCodec codec.BinaryCodec, legacyAmino *codec.LegacyAmino
 	paramsKeeper.Subspace(ibctransfertypes.ModuleName).WithKeyTable(ibctransfertypes.ParamKeyTable())
 	paramsKeeper.Subspace(icacontrollertypes.SubModuleName).WithKeyTable(icacontrollertypes.ParamKeyTable())
 	paramsKeeper.Subspace(icahosttypes.SubModuleName).WithKeyTable(icahosttypes.ParamKeyTable())
-
-	// Cosmos EVM modules
-	paramsKeeper.Subspace(evmvmtypes.ModuleName).WithKeyTable(evmvmtypes.ParamKeyTable())
-	paramsKeeper.Subspace(evmfeemarkettypes.ModuleName).WithKeyTable(evmfeemarkettypes.ParamKeyTable())
-	paramsKeeper.Subspace(evmerc20types.ModuleName)
 
 	paramsKeeper.Subspace(baseapp.Paramspace).WithKeyTable(paramstypes.ConsensusParamsKeyTable())
 

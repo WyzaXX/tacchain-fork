@@ -132,8 +132,12 @@ if [[ -z $EVM_CHAIN_ID ]]; then
     exit 1
 fi
 
+# This fixes invalid chain id but then invalid nonce got 0 expected 1 occurs
+# It seems that the multicall is being deployed when init is called. so when it tries to deploy again it fails with the nonce
+# jq --arg CHAIN_ID "$EVM_CHAIN_ID" '.app_state.evm.chain_id = $CHAIN_ID' $HOMEDIR/config/genesis.json > $HOMEDIR/config/genesis_patched.json && mv $HOMEDIR/config/genesis_patched.json $HOMEDIR/config/genesis.json
+
 sed -i.bak "s/\"chain_id\": \"262144\"/\"chain_id\": \"$EVM_CHAIN_ID\"/g" $HOMEDIR/config/genesis.json
-sed -i.bak "s/\"denom\": \"atest\"/\"denom\": \"utac\"/g" $HOMEDIR/config/genesis.json
+# sed -i.bak "s/\"denom\": \"atest\"/\"denom\": \"utac\"/g" $HOMEDIR/config/genesis.json
 sed -i.bak "s/\"evm_denom\": \"atest\"/\"evm_denom\": \"utac\"/g" $HOMEDIR/config/genesis.json
 
 # enable evm eip-3855
